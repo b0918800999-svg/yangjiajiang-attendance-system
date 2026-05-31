@@ -58,10 +58,10 @@
                 部門
                 <select id="departmentSelect" name="department" required>
                   <option value="行政部">行政部</option>
+                  <option value="倉儲部">倉儲部</option>
+                  <option value="包裝部">包裝部</option>
                   <option value="業務部">業務部</option>
-                  <option value="客服部">客服部</option>
-                  <option value="工程部">工程部</option>
-                  <option value="營運部">營運部</option>
+                  <option value="主管">主管</option>
                   <option value="其他">其他</option>
                 </select>
               </label>
@@ -144,10 +144,10 @@
                 <select id="departmentFilter">
                   <option value="">全部</option>
                   <option value="行政部">行政部</option>
+                  <option value="倉儲部">倉儲部</option>
+                  <option value="包裝部">包裝部</option>
                   <option value="業務部">業務部</option>
-                  <option value="客服部">客服部</option>
-                  <option value="工程部">工程部</option>
-                  <option value="營運部">營運部</option>
+                  <option value="主管">主管</option>
                   <option value="其他">其他</option>
                 </select>
               </label>
@@ -207,10 +207,10 @@
                   部門
                   <select id="employeeManageDepartment" name="department" required>
                     <option value="行政部">行政部</option>
+                    <option value="倉儲部">倉儲部</option>
+                    <option value="包裝部">包裝部</option>
                     <option value="業務部">業務部</option>
-                    <option value="客服部">客服部</option>
-                    <option value="工程部">工程部</option>
-                    <option value="營運部">營運部</option>
+                    <option value="主管">主管</option>
                     <option value="其他">其他</option>
                   </select>
                 </label>
@@ -222,7 +222,14 @@
               <div class="form-row">
                 <label for="employeeManageTitle">
                   職稱
-                  <input id="employeeManageTitle" name="title" type="text" placeholder="例如：行政專員" />
+                  <select id="employeeManageTitle" name="title">
+                    <option value="一般員工">一般員工</option>
+                    <option value="組長">組長</option>
+                    <option value="領班">領班</option>
+                    <option value="主任">主任</option>
+                    <option value="經理">經理</option>
+                    <option value="總經理">總經理</option>
+                  </select>
                 </label>
                 <label for="employeeManagePhone">
                   手機號碼
