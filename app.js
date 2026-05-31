@@ -163,10 +163,24 @@ function getRecordWorkSite(record, employees = getEmployees()) {
 function getAttendanceFlags(row) {
   const rule = workSiteRules[row.workSite];
   const missing = !row.clockIn || !row.clockOut;
-  const late = Boolean(!missing && rule && timeToMinutes(row.clockIn) > timeToMinutes(rule.start));
-  const early = Boolean(!missing && rule && timeToMinutes(row.clockOut) < timeToMinutes(rule.end));
+  const late = Boolean(row.clockIn && rule && timeToMinutes(row.clockIn) > timeToMinutes(rule.start));
+  const early = Boolean(row.clockOut && rule && timeToMinutes(row.clockOut) < timeToMinutes(rule.end));
   const status = missing ? "缺卡" : late ? "遲到" : early ? "早退" : "正常";
   return { missing, late, early, status };
+}
+
+function getRecordAutoStatus(record, row) {
+  if (record.action === "clock_in" && row?.late) return "遲到";
+  if (record.action === "clock_out" && row?.early) return "早退";
+  if (row?.missing) return "缺卡";
+  return "正常";
+}
+
+function getAttendanceSuccessMessage(record) {
+  if (record.action === "clock_in") {
+    return record.status === "遲到" ? "遲到上班" : "正常上班";
+  }
+  return record.status === "早退" ? "早退下班" : "正常下班";
 }
 
 function calculateWorkHours(clockIn, clockOut) {
@@ -237,15 +251,7 @@ function recalculateRecordStatuses(records) {
       return { ...record, workSite: getRecordWorkSite(record, employees), status: record.statusOverride };
     }
     const row = rowMap.get(`${record.workDate}-${record.employeeId}`);
-    let status = "正常";
-    if (row?.missing) {
-      status = "缺卡";
-    } else if (record.action === "clock_in" && row?.late) {
-      status = "遲到";
-    } else if (record.action === "clock_out" && row?.early) {
-      status = "早退";
-    }
-    return { ...record, workSite: getRecordWorkSite(record, employees), status };
+    return { ...record, workSite: getRecordWorkSite(record, employees), status: getRecordAutoStatus(record, row) };
   });
 }
 
@@ -850,9 +856,10 @@ function submitAttendance(event) {
   };
 
   saveRecords([record, ...getRecords()]);
+  const savedRecord = getRecords().find((item) => item.id === record.id) || record;
   clockForm.reset();
-  formMessage.textContent = `${record.employeeName} ${actionLabels[record.action]}打卡成功。`;
-  showToast("打卡成功");
+  formMessage.textContent = `${savedRecord.employeeName} ${getAttendanceSuccessMessage(savedRecord)}。`;
+  showToast(getAttendanceSuccessMessage(savedRecord));
   renderAdmin();
 }
 
