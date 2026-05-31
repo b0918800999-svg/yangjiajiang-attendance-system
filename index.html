@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>員工智慧打卡系統</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#clock" aria-label="楊家將包裝設計有限公司員工打卡系統首頁">
+        <span class="brand-mark">楊</span>
+        <span>
+          <strong>楊家將包裝設計有限公司</strong>
+          <small>員工智慧打卡系統</small>
+        </span>
+      </a>
+      <nav class="nav-actions" aria-label="主要功能">
+        <button class="ghost-button" data-scroll="#records">打卡紀錄</button>
+        <button class="solid-button" data-open-admin>管理後台</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="workspace" id="clock" aria-labelledby="clock-title">
+        <div class="clock-panel">
+          <div class="live-clock" aria-live="polite">
+            <span>目前時間</span>
+            <strong id="currentTime">--:--:--</strong>
+            <span id="currentDate">讀取日期中</span>
+          </div>
+
+          <div class="dashboard-actions" aria-labelledby="clock-title">
+            <div>
+              <p class="eyebrow">HR Dashboard</p>
+              <h1 id="clock-title">企業出勤儀表板</h1>
+            </div>
+            <div class="dashboard-buttons">
+              <button class="solid-button dashboard-button" type="button" data-clock-action="clock_in">上班打卡</button>
+              <button class="ghost-button dashboard-button" type="button" data-clock-action="clock_out">下班打卡</button>
+            </div>
+          </div>
+
+          <form class="clock-form hidden" id="clockForm">
+            <div class="form-row">
+              <label for="employeeIdInput">
+                員工編號
+                <input id="employeeIdInput" name="employeeId" type="text" autocomplete="off" placeholder="例如：E001" required />
+              </label>
+              <label for="employeeNameInput">
+                姓名
+                <input id="employeeNameInput" name="employeeName" type="text" autocomplete="name" placeholder="請輸入姓名" required />
+              </label>
+            </div>
+            <label for="departmentSelect">
+              部門
+              <select id="departmentSelect" name="department" required>
+                <option value="行政部">行政部</option>
+                <option value="業務部">業務部</option>
+                <option value="客服部">客服部</option>
+                <option value="工程部">工程部</option>
+                <option value="營運部">營運部</option>
+                <option value="其他">其他</option>
+              </select>
+            </label>
+            <label for="noteInput">
+              備註
+              <textarea id="noteInput" name="note" rows="3" placeholder="例如：外出拜訪、遠端上班、補打卡原因"></textarea>
+            </label>
+            <div class="clock-actions">
+              <button class="solid-button large" type="submit" name="action" value="clock_in">上班打卡</button>
+              <button class="ghost-button large" type="submit" name="action" value="clock_out">下班打卡</button>
+            </div>
+            <p class="form-message" id="formMessage" role="status"></p>
+          </form>
+        </div>
+
+        <aside class="summary-panel" aria-label="今日摘要">
+          <div class="status-card primary">
+            <span>資料模式</span>
+            <strong id="dataMode">檢查中</strong>
+          </div>
+          <div class="status-grid" id="todayStats">
+            <div class="status-card">
+              <span>今日上班</span>
+              <strong>0</strong>
+            </div>
+            <div class="status-card">
+              <span>今日下班</span>
+              <strong>0</strong>
+            </div>
+          </div>
+          <div class="recent-box">
+            <h2>最近打卡</h2>
+            <ul id="recentList"></ul>
+          </div>
+        </aside>
+      </section>
+
+      <section class="section" id="records" aria-labelledby="records-title">
+        <div class="section-heading compact">
+          <p class="eyebrow">Management Console</p>
+          <h2 id="records-title">出勤管理後台</h2>
+          <p>管理者輸入管理碼後可維護員工資料、查詢打卡紀錄、修正狀態、刪除測試資料並匯出 Excel。</p>
+        </div>
+
+        <div class="admin-login" id="adminLogin">
+          <label for="adminPin">
+            管理碼
+            <input id="adminPin" type="password" inputmode="numeric" placeholder="預設 1234" />
+          </label>
+          <button class="solid-button" id="adminLoginButton" type="button">進入管理</button>
+        </div>
+
+        <div class="admin-panel hidden" id="adminPanel">
+          <div class="admin-toolbar">
+            <div class="stats" id="stats"></div>
+            <div class="toolbar-actions">
+              <label class="filter-label" for="dateFilter">
+                日期
+                <input id="dateFilter" type="date" />
+              </label>
+              <label class="filter-label" for="employeeFilter">
+                員工
+                <input id="employeeFilter" type="search" placeholder="編號或姓名" />
+              </label>
+              <label class="filter-label" for="departmentFilter">
+                部門
+                <select id="departmentFilter">
+                  <option value="">全部</option>
+                  <option value="行政部">行政部</option>
+                  <option value="業務部">業務部</option>
+                  <option value="客服部">客服部</option>
+                  <option value="工程部">工程部</option>
+                  <option value="營運部">營運部</option>
+                  <option value="其他">其他</option>
+                </select>
+              </label>
+              <label class="filter-label" for="actionFilter">
+                動作
+                <select id="actionFilter">
+                  <option value="">全部</option>
+                  <option value="clock_in">上班</option>
+                  <option value="clock_out">下班</option>
+                </select>
+              </label>
+              <button class="ghost-button" id="clearFilterButton" type="button">清除篩選</button>
+              <button class="ghost-button" id="exportButton" type="button">匯出 Excel</button>
+              <button class="ghost-button danger" id="clearButton" type="button">清空測試資料</button>
+            </div>
+          </div>
+
+          <div class="admin-toolbar">
+            <form class="clock-form" id="employeeForm">
+              <input id="editingEmployeeId" type="hidden" />
+              <div class="form-row">
+                <label for="employeeManageId">
+                  員工編號
+                  <input id="employeeManageId" name="employeeId" type="text" placeholder="例如：E001" required />
+                </label>
+                <label for="employeeManageName">
+                  姓名
+                  <input id="employeeManageName" name="name" type="text" placeholder="請輸入姓名" required />
+                </label>
+              </div>
+              <div class="form-row">
+                <label for="employeeManageDepartment">
+                  部門
+                  <select id="employeeManageDepartment" name="department" required>
+                    <option value="行政部">行政部</option>
+                    <option value="業務部">業務部</option>
+                    <option value="客服部">客服部</option>
+                    <option value="工程部">工程部</option>
+                    <option value="營運部">營運部</option>
+                    <option value="其他">其他</option>
+                  </select>
+                </label>
+                <label for="employeeManageStartDate">
+                  到職日
+                  <input id="employeeManageStartDate" name="startDate" type="date" required />
+                </label>
+              </div>
+              <label for="employeeManageStatus">
+                狀態
+                <select id="employeeManageStatus" name="status" required>
+                  <option value="在職">在職</option>
+                  <option value="離職">離職</option>
+                </select>
+              </label>
+              <div class="toolbar-actions">
+                <button class="solid-button" id="saveEmployeeButton" type="submit">新增員工</button>
+                <button class="ghost-button" id="cancelEmployeeButton" type="button">取消修改</button>
+              </div>
+              <p class="form-message" id="employeeMessage" role="status"></p>
+            </form>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>員工編號</th>
+                  <th>姓名</th>
+                  <th>部門</th>
+                  <th>到職日</th>
+                  <th>狀態</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="employeeTable"></tbody>
+            </table>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>時間</th>
+                  <th>員工</th>
+                  <th>部門</th>
+                  <th>動作</th>
+                  <th>狀態</th>
+                  <th>備註</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="attendanceTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
