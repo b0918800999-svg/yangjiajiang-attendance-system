@@ -22,10 +22,16 @@ const editingEmployeeId = document.querySelector("#editingEmployeeId");
 const employeeManageId = document.querySelector("#employeeManageId");
 const employeeManageName = document.querySelector("#employeeManageName");
 const employeeManageDepartment = document.querySelector("#employeeManageDepartment");
+const employeeManageTitle = document.querySelector("#employeeManageTitle");
+const employeeManagePhone = document.querySelector("#employeeManagePhone");
 const employeeManageStartDate = document.querySelector("#employeeManageStartDate");
 const employeeManageStatus = document.querySelector("#employeeManageStatus");
+const employeeManageNote = document.querySelector("#employeeManageNote");
 const saveEmployeeButton = document.querySelector("#saveEmployeeButton");
 const cancelEmployeeButton = document.querySelector("#cancelEmployeeButton");
+const employeeImportFile = document.querySelector("#employeeImportFile");
+const importEmployeesButton = document.querySelector("#importEmployeesButton");
+const importMessage = document.querySelector("#importMessage");
 const employeeIdInput = document.querySelector("#employeeIdInput");
 const employeeNameInput = document.querySelector("#employeeNameInput");
 const departmentSelect = document.querySelector("#departmentSelect");
@@ -34,9 +40,11 @@ const todayStats = document.querySelector("#todayStats");
 const recentList = document.querySelector("#recentList");
 const dataMode = document.querySelector("#dataMode");
 const dateFilter = document.querySelector("#dateFilter");
-const employeeFilter = document.querySelector("#employeeFilter");
+const employeeNameFilter = document.querySelector("#employeeNameFilter");
+const employeeIdFilter = document.querySelector("#employeeIdFilter");
 const departmentFilter = document.querySelector("#departmentFilter");
 const actionFilter = document.querySelector("#actionFilter");
+const monthlyReportMonth = document.querySelector("#monthlyReportMonth");
 const toast = document.querySelector("#toast");
 
 let cachedRecords = [];
@@ -76,8 +84,11 @@ function normalizeEmployee(employee) {
     employeeId: normalizeEmployeeId(employee.employeeId || employee.id || employee.code),
     name: String(employee.name || employee.employeeName || "").trim(),
     department: String(employee.department || "其他").trim(),
+    title: String(employee.title || employee.position || "").trim(),
+    phone: String(employee.phone || employee.mobile || "").trim(),
     startDate: employee.startDate || formatDateValue(new Date()),
     status: employee.status === "離職" ? "離職" : "在職",
+    note: String(employee.note || "").trim(),
     createdAt: employee.createdAt || new Date().toISOString(),
     updatedAt: employee.updatedAt || new Date().toISOString()
   };
@@ -209,13 +220,15 @@ function renderSummary() {
 
 function getFilteredRecords() {
   const selectedDate = dateFilter.value;
-  const keyword = employeeFilter.value.trim().toLowerCase();
+  const nameKeyword = employeeNameFilter.value.trim().toLowerCase();
+  const idKeyword = normalizeEmployeeId(employeeIdFilter.value);
   const department = departmentFilter.value;
   const action = actionFilter.value;
 
   return getRecords()
     .filter((record) => !selectedDate || record.workDate === selectedDate)
-    .filter((record) => !keyword || `${record.employeeId} ${record.employeeName}`.toLowerCase().includes(keyword))
+    .filter((record) => !nameKeyword || record.employeeName.toLowerCase().includes(nameKeyword))
+    .filter((record) => !idKeyword || record.employeeId.includes(idKeyword))
     .filter((record) => !department || record.department === department)
     .filter((record) => !action || record.action === action)
     .sort((a, b) => `${b.workDate}${b.workTime}`.localeCompare(`${a.workDate}${a.workTime}`));
@@ -225,7 +238,7 @@ function renderEmployeeTable() {
   const employees = [...getEmployees()].sort((a, b) => a.employeeId.localeCompare(b.employeeId));
 
   if (!employees.length) {
-    employeeTable.innerHTML = `<tr><td class="empty-state" colspan="6">目前尚未建立員工資料。</td></tr>`;
+    employeeTable.innerHTML = `<tr><td class="empty-state" colspan="9">目前尚未建立員工資料。</td></tr>`;
     return;
   }
 
@@ -236,8 +249,11 @@ function renderEmployeeTable() {
           <td><strong>${escapeHtml(employee.employeeId)}</strong></td>
           <td>${escapeHtml(employee.name)}</td>
           <td>${escapeHtml(employee.department)}</td>
+          <td>${escapeHtml(employee.title)}</td>
+          <td>${escapeHtml(employee.phone)}</td>
           <td>${escapeHtml(employee.startDate)}</td>
           <td><span class="badge ${employee.status === "在職" ? "in" : "out"}">${escapeHtml(employee.status)}</span></td>
+          <td>${escapeHtml(employee.note)}</td>
           <td>
             <button class="small-button" type="button" data-edit-employee="${escapeHtml(employee.employeeId)}">修改</button>
             <button class="small-button" type="button" data-delete-employee="${escapeHtml(employee.employeeId)}">刪除</button>
@@ -348,6 +364,166 @@ function exportExcel() {
   URL.revokeObjectURL(url);
 }
 
+function getMonthlyReportRows(monthValue = monthlyReportMonth.value || formatDateValue(new Date()).slice(0, 7)) {
+  const monthRecords = getRecords().filter((record) => record.workDate.startsWith(monthValue));
+  const grouped = new Map();
+
+  monthRecords.forEach((record) => {
+    const key = `${record.workDate}-${record.employeeId}`;
+    const current = grouped.get(key) || {
+      date: record.workDate,
+      employeeId: record.employeeId,
+      employeeName: record.employeeName,
+      department: record.department,
+      clockIn: "",
+      clockOut: "",
+      notes: []
+    };
+    if (record.action === "clock_in" && (!current.clockIn || record.workTime < current.clockIn)) {
+      current.clockIn = record.workTime;
+    }
+    if (record.action === "clock_out" && (!current.clockOut || record.workTime > current.clockOut)) {
+      current.clockOut = record.workTime;
+    }
+    if (record.note) {
+      current.notes.push(record.note);
+    }
+    grouped.set(key, current);
+  });
+
+  return [...grouped.values()].sort((a, b) => `${a.date}${a.employeeId}`.localeCompare(`${b.date}${b.employeeId}`));
+}
+
+function exportMonthlyReport() {
+  const monthValue = monthlyReportMonth.value || formatDateValue(new Date()).slice(0, 7);
+  const rows = getMonthlyReportRows(monthValue);
+  const bodyRows = rows
+    .map(
+      (row) => `
+        <tr>
+          <td>${escapeHtml(row.date)}</td>
+          <td>${escapeHtml(row.employeeId)}</td>
+          <td>${escapeHtml(row.employeeName)}</td>
+          <td>${escapeHtml(row.department)}</td>
+          <td>${escapeHtml(row.clockIn)}</td>
+          <td>${escapeHtml(row.clockOut)}</td>
+          <td>${escapeHtml([...new Set(row.notes)].join(" / "))}</td>
+        </tr>
+      `
+    )
+    .join("");
+  const workbook = `
+    <html>
+      <head><meta charset="UTF-8" /></head>
+      <body>
+        <table border="1">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>員工編號</th>
+              <th>姓名</th>
+              <th>部門</th>
+              <th>上班時間</th>
+              <th>下班時間</th>
+              <th>備註</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `attendance-monthly-${monthValue}.xls`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function splitImportLine(line) {
+  const cells = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (!quoted && (char === "," || char === "\t")) {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function parseEmployeeImport(text) {
+  const normalizedText = text.replace(/<[^>]+>/g, "\t").replace(/\r/g, "");
+  const lines = normalizedText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const rows = lines.map(splitImportLine);
+  const headerKeywords = ["員工編號", "姓名", "部門"];
+  const startIndex = rows[0] && headerKeywords.some((keyword) => rows[0].includes(keyword)) ? 1 : 0;
+
+  return rows.slice(startIndex).map((row) =>
+    normalizeEmployee({
+      employeeId: row[0],
+      name: row[1],
+      department: row[2],
+      title: row[3],
+      phone: row[4],
+      startDate: row[5],
+      status: row[6],
+      note: row[7]
+    })
+  );
+}
+
+function importEmployeesFromFile() {
+  const file = employeeImportFile.files && employeeImportFile.files[0];
+  if (!file) {
+    importMessage.textContent = "請先選擇匯入檔案。";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    const importedEmployees = parseEmployeeImport(String(reader.result || ""));
+    const validEmployees = importedEmployees.filter((employee) => employee.employeeId && employee.name);
+    if (!validEmployees.length) {
+      importMessage.textContent = "找不到可匯入的員工資料。";
+      return;
+    }
+
+    const merged = [...getEmployees()];
+    validEmployees.forEach((employee) => {
+      const index = merged.findIndex((item) => item.employeeId === employee.employeeId);
+      if (index >= 0) {
+        merged[index] = { ...merged[index], ...employee, updatedAt: new Date().toISOString() };
+      } else {
+        merged.push({ ...employee, createdAt: new Date().toISOString() });
+      }
+    });
+    saveEmployees(merged);
+    renderAdmin();
+    importMessage.textContent = `已匯入 ${validEmployees.length} 筆員工資料。`;
+    showToast("員工匯入完成");
+  });
+  reader.readAsText(file, "utf-8");
+}
+
 function autofillEmployee(employeeId) {
   const employee = findEmployee(employeeId);
   if (!employee) return;
@@ -372,8 +548,11 @@ function submitEmployee(event) {
     employeeId,
     name: data.get("name").trim(),
     department: data.get("department"),
+    title: data.get("title").trim(),
+    phone: data.get("phone").trim(),
     startDate: data.get("startDate"),
     status: data.get("status"),
+    note: data.get("note").trim(),
     updatedAt: new Date().toISOString()
   };
 
@@ -424,8 +603,11 @@ function editEmployee(employeeId) {
   employeeManageId.disabled = true;
   employeeManageName.value = employee.name;
   employeeManageDepartment.value = employee.department;
+  employeeManageTitle.value = employee.title;
+  employeeManagePhone.value = employee.phone;
   employeeManageStartDate.value = employee.startDate;
   employeeManageStatus.value = employee.status;
+  employeeManageNote.value = employee.note;
   saveEmployeeButton.textContent = "儲存修改";
   employeeMessage.textContent = `正在修改 ${employee.name}`;
 }
@@ -479,7 +661,6 @@ function submitAttendance(event) {
 
   saveRecords([record, ...getRecords()]);
   clockForm.reset();
-  clockForm.classList.add("hidden");
   formMessage.textContent = `${record.employeeName} ${actionLabels[record.action]}打卡成功。`;
   showToast("打卡成功");
   renderAdmin();
@@ -503,8 +684,11 @@ function ensureDefaultEmployee() {
     employeeId: "E001",
     name: "王小明",
     department: "行政部",
+    title: "",
+    phone: "",
     startDate: formatDateValue(new Date()),
     status: "在職",
+    note: "",
     createdAt: now,
     updatedAt: now
   };
@@ -519,8 +703,11 @@ function ensureDefaultEmployee() {
               ...employee,
               name: "王小明",
               department: "行政部",
+              title: employee.title || "",
+              phone: employee.phone || "",
               status: "在職",
               startDate: employee.startDate || defaultEmployee.startDate,
+              note: employee.note || "",
               updatedAt: now
             }
           : employee
@@ -563,13 +750,6 @@ document.addEventListener("click", (event) => {
     deleteEmployee(deleteEmployeeButton.dataset.deleteEmployee);
   }
 
-  const dashboardClockButton = event.target.closest("[data-clock-action]");
-  if (dashboardClockButton) {
-    submitterAction = dashboardClockButton.dataset.clockAction;
-    clockForm.classList.remove("hidden");
-    formMessage.textContent = `${actionLabels[submitterAction]}模式，請輸入員工編號。`;
-    employeeIdInput.focus();
-  }
 });
 
 document.addEventListener("change", (event) => {
@@ -582,7 +762,8 @@ document.addEventListener("change", (event) => {
   }
 });
 
-employeeFilter.addEventListener("input", renderAdmin);
+employeeNameFilter.addEventListener("input", renderAdmin);
+employeeIdFilter.addEventListener("input", renderAdmin);
 employeeIdInput.addEventListener("blur", () => autofillEmployee(employeeIdInput.value));
 employeeIdInput.addEventListener("change", () => autofillEmployee(employeeIdInput.value));
 clockForm.addEventListener("submit", submitAttendance);
@@ -608,9 +789,12 @@ document.querySelector("#adminLoginButton").addEventListener("click", () => {
 });
 
 document.querySelector("#exportButton").addEventListener("click", exportExcel);
+document.querySelector("#exportMonthlyButton").addEventListener("click", exportMonthlyReport);
+importEmployeesButton.addEventListener("click", importEmployeesFromFile);
 document.querySelector("#clearFilterButton").addEventListener("click", () => {
   dateFilter.value = "";
-  employeeFilter.value = "";
+  employeeNameFilter.value = "";
+  employeeIdFilter.value = "";
   departmentFilter.value = "";
   actionFilter.value = "";
   renderAdmin();

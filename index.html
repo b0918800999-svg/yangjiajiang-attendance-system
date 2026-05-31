@@ -36,13 +36,9 @@
               <p class="eyebrow">HR Dashboard</p>
               <h1 id="clock-title">企業出勤儀表板</h1>
             </div>
-            <div class="dashboard-buttons">
-              <button class="solid-button dashboard-button" type="button" data-clock-action="clock_in">上班打卡</button>
-              <button class="ghost-button dashboard-button" type="button" data-clock-action="clock_out">下班打卡</button>
-            </div>
           </div>
 
-          <form class="clock-form hidden" id="clockForm">
+          <form class="clock-form" id="clockForm">
             <div class="form-row">
               <label for="employeeIdInput">
                 員工編號
@@ -121,9 +117,13 @@
                 日期
                 <input id="dateFilter" type="date" />
               </label>
-              <label class="filter-label" for="employeeFilter">
-                員工
-                <input id="employeeFilter" type="search" placeholder="編號或姓名" />
+              <label class="filter-label" for="employeeNameFilter">
+                姓名
+                <input id="employeeNameFilter" type="search" placeholder="員工姓名" />
+              </label>
+              <label class="filter-label" for="employeeIdFilter">
+                編號
+                <input id="employeeIdFilter" type="search" placeholder="員工編號" />
               </label>
               <label class="filter-label" for="departmentFilter">
                 部門
@@ -147,6 +147,11 @@
               </label>
               <button class="ghost-button" id="clearFilterButton" type="button">清除篩選</button>
               <button class="ghost-button" id="exportButton" type="button">匯出 Excel</button>
+              <label class="filter-label" for="monthlyReportMonth">
+                月報表
+                <input id="monthlyReportMonth" type="month" />
+              </label>
+              <button class="ghost-button" id="exportMonthlyButton" type="button">匯出月報表</button>
               <button class="ghost-button danger" id="clearButton" type="button">清空測試資料</button>
             </div>
           </div>
@@ -181,12 +186,26 @@
                   <input id="employeeManageStartDate" name="startDate" type="date" required />
                 </label>
               </div>
+              <div class="form-row">
+                <label for="employeeManageTitle">
+                  職稱
+                  <input id="employeeManageTitle" name="title" type="text" placeholder="例如：行政專員" />
+                </label>
+                <label for="employeeManagePhone">
+                  手機號碼
+                  <input id="employeeManagePhone" name="phone" type="tel" placeholder="例如：0912-345-678" />
+                </label>
+              </div>
               <label for="employeeManageStatus">
                 狀態
                 <select id="employeeManageStatus" name="status" required>
                   <option value="在職">在職</option>
                   <option value="離職">離職</option>
                 </select>
+              </label>
+              <label for="employeeManageNote">
+                備註
+                <textarea id="employeeManageNote" name="note" rows="3" placeholder="員工資料備註"></textarea>
               </label>
               <div class="toolbar-actions">
                 <button class="solid-button" id="saveEmployeeButton" type="submit">新增員工</button>
@@ -196,6 +215,21 @@
             </form>
           </div>
 
+          <div class="admin-toolbar">
+            <div class="import-panel">
+              <div>
+                <p class="eyebrow">Employee Import</p>
+                <h2>批次匯入員工</h2>
+                <p>欄位順序：員工編號、姓名、部門、職稱、手機號碼、到職日、狀態、備註。</p>
+              </div>
+              <div class="toolbar-actions">
+                <input id="employeeImportFile" type="file" accept=".csv,.tsv,.xls,.txt" />
+                <button class="ghost-button" id="importEmployeesButton" type="button">匯入員工</button>
+              </div>
+              <p class="form-message" id="importMessage" role="status"></p>
+            </div>
+          </div>
+
           <div class="table-wrap">
             <table>
               <thead>
@@ -203,8 +237,11 @@
                   <th>員工編號</th>
                   <th>姓名</th>
                   <th>部門</th>
+                  <th>職稱</th>
+                  <th>手機號碼</th>
                   <th>到職日</th>
                   <th>狀態</th>
+                  <th>備註</th>
                   <th>操作</th>
                 </tr>
               </thead>
