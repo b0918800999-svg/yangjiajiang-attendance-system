@@ -112,19 +112,27 @@
         <div class="section-heading compact">
           <p class="eyebrow">Management Console</p>
           <h2 id="records-title">出勤管理後台</h2>
-          <p>管理者輸入管理碼後可維護員工資料、查詢打卡紀錄、修正狀態、刪除測試資料並匯出 Excel。</p>
+          <p>管理者登入後可維護員工資料、查詢打卡紀錄、修正狀態、刪除測試資料並匯出 Excel。</p>
         </div>
 
         <div class="admin-login" id="adminLogin">
-          <label for="adminPin">
-            管理碼
-            <input id="adminPin" type="password" inputmode="numeric" placeholder="預設 1234" />
+          <label for="adminAccount">
+            帳號
+            <input id="adminAccount" type="text" autocomplete="username" placeholder="請輸入管理員帳號" />
           </label>
-          <button class="solid-button" id="adminLoginButton" type="button">進入管理</button>
+          <label for="adminPassword">
+            密碼
+            <input id="adminPassword" type="password" autocomplete="current-password" placeholder="請輸入管理員密碼" />
+          </label>
+          <button class="solid-button" id="adminLoginButton" type="button">登入</button>
+          <p class="form-message admin-login-message" id="adminLoginMessage" role="status"></p>
         </div>
 
         <div class="admin-panel hidden" id="adminPanel">
-          <div class="release-note">系統正式啟用日期：2026/06/01</div>
+          <div class="release-note">
+            <span>系統正式啟用日期：2026/06/01</span>
+            <button class="ghost-button" id="adminLogoutButton" type="button">登出</button>
+          </div>
 
           <div class="admin-toolbar">
             <div class="stats" id="stats"></div>

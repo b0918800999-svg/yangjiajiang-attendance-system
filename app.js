@@ -18,7 +18,9 @@ const currentTime = document.querySelector("#currentTime");
 const currentDate = document.querySelector("#currentDate");
 const adminLogin = document.querySelector("#adminLogin");
 const adminPanel = document.querySelector("#adminPanel");
-const adminPin = document.querySelector("#adminPin");
+const adminAccount = document.querySelector("#adminAccount");
+const adminPassword = document.querySelector("#adminPassword");
+const adminLoginMessage = document.querySelector("#adminLoginMessage");
 const attendanceTable = document.querySelector("#attendanceTable");
 const employeeTable = document.querySelector("#employeeTable");
 const employeeForm = document.querySelector("#employeeForm");
@@ -61,6 +63,7 @@ const toast = document.querySelector("#toast");
 let cachedRecords = [];
 let cachedEmployees = [];
 let submitterAction = "clock_in";
+let isAdminLoggedIn = false;
 
 function loadJson(key) {
   try {
@@ -354,6 +357,42 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
   window.setTimeout(() => toast.classList.remove("show"), 2400);
+}
+
+function requireAdmin() {
+  if (isAdminLoggedIn) return true;
+  adminLogin.classList.remove("hidden");
+  adminPanel.classList.add("hidden");
+  adminLoginMessage.textContent = "請先登入管理後台。";
+  showToast("請先登入管理後台");
+  return false;
+}
+
+function loginAdmin() {
+  const account = adminAccount.value.trim();
+  const password = adminPassword.value;
+  if (account !== "admin" || password !== "yang9999") {
+    adminLoginMessage.textContent = "帳號或密碼錯誤";
+    showToast("帳號或密碼錯誤");
+    return;
+  }
+  isAdminLoggedIn = true;
+  adminLoginMessage.textContent = "";
+  adminPassword.value = "";
+  adminLogin.classList.add("hidden");
+  adminPanel.classList.remove("hidden");
+  renderAdmin();
+  showToast("管理後台登入成功");
+}
+
+function logoutAdmin() {
+  isAdminLoggedIn = false;
+  adminAccount.value = "";
+  adminPassword.value = "";
+  adminLogin.classList.remove("hidden");
+  adminPanel.classList.add("hidden");
+  adminAccount.focus();
+  showToast("已登出管理後台");
 }
 
 function normalizeEmployeeId(value) {
@@ -727,6 +766,7 @@ function resetEmployeeForm() {
 
 function submitEmployee(event) {
   event.preventDefault();
+  if (!requireAdmin()) return;
   const data = new FormData(employeeForm);
   const editingId = editingEmployeeId.value;
   const employeeId = editingId || normalizeEmployeeId(data.get("employeeId"));
@@ -804,6 +844,7 @@ function editEmployee(employeeId) {
 }
 
 function deleteEmployee(employeeId) {
+  if (!requireAdmin()) return;
   const employee = findEmployee(employeeId);
   if (!employee) {
     showToast("找不到員工資料");
@@ -867,12 +908,14 @@ function submitAttendance(event) {
 }
 
 function deleteRecord(id) {
+  if (!requireAdmin()) return;
   saveRecords(getRecords().filter((record) => record.id !== id));
   renderAdmin();
   showToast("紀錄已刪除");
 }
 
 function updateRecordStatus(id, status) {
+  if (!requireAdmin()) return;
   saveRecords(getRecords().map((record) => (record.id === id ? { ...record, status, statusOverride: status } : record)));
   renderAdmin();
   showToast("狀態已更新");
@@ -936,21 +979,24 @@ document.addEventListener("click", (event) => {
 
   if (event.target.closest("[data-open-admin]")) {
     document.querySelector("#records").scrollIntoView({ behavior: "smooth" });
-    adminPin.focus();
+    adminAccount.focus();
   }
 
   const deleteButton = event.target.closest("[data-delete-id]");
   if (deleteButton) {
+    if (!requireAdmin()) return;
     deleteRecord(deleteButton.dataset.deleteId);
   }
 
   const editEmployeeButton = event.target.closest("[data-edit-employee]");
   if (editEmployeeButton) {
+    if (!requireAdmin()) return;
     editEmployee(editEmployeeButton.dataset.editEmployee);
   }
 
   const deleteEmployeeButton = event.target.closest("[data-delete-employee]");
   if (deleteEmployeeButton) {
+    if (!requireAdmin()) return;
     deleteEmployee(deleteEmployeeButton.dataset.deleteEmployee);
   }
 
@@ -958,16 +1004,22 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("change", (event) => {
   if ([dateFilter, departmentFilter, actionFilter, monthlyReportMonth].includes(event.target)) {
+    if (!requireAdmin()) return;
     renderAdmin();
   }
 
   if (event.target.matches("[data-status-id]")) {
+    if (!requireAdmin()) return;
     updateRecordStatus(event.target.dataset.statusId, event.target.value);
   }
 });
 
-employeeNameFilter.addEventListener("input", renderAdmin);
-employeeIdFilter.addEventListener("input", renderAdmin);
+employeeNameFilter.addEventListener("input", () => {
+  if (requireAdmin()) renderAdmin();
+});
+employeeIdFilter.addEventListener("input", () => {
+  if (requireAdmin()) renderAdmin();
+});
 employeeIdInput.addEventListener("blur", () => autofillEmployee(employeeIdInput.value));
 employeeIdInput.addEventListener("change", () => autofillEmployee(employeeIdInput.value));
 clockForm.addEventListener("submit", submitAttendance);
@@ -981,21 +1033,30 @@ clockForm.addEventListener("click", (event) => {
 employeeForm.addEventListener("submit", submitEmployee);
 cancelEmployeeButton.addEventListener("click", resetEmployeeForm);
 
-document.querySelector("#adminLoginButton").addEventListener("click", () => {
-  const pin = adminPin.value.trim();
-  if (!pin || pin !== "1234") {
-    showToast("管理碼不正確");
-    return;
+document.querySelector("#adminLoginButton").addEventListener("click", loginAdmin);
+adminPassword.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    loginAdmin();
   }
-  adminLogin.classList.add("hidden");
-  adminPanel.classList.remove("hidden");
-  renderAdmin();
 });
+adminAccount.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    loginAdmin();
+  }
+});
+document.querySelector("#adminLogoutButton").addEventListener("click", logoutAdmin);
 
-document.querySelector("#exportButton").addEventListener("click", exportExcel);
-document.querySelector("#exportMonthlyButton").addEventListener("click", exportMonthlyReport);
-importEmployeesButton.addEventListener("click", importEmployeesFromFile);
+document.querySelector("#exportButton").addEventListener("click", () => {
+  if (requireAdmin()) exportExcel();
+});
+document.querySelector("#exportMonthlyButton").addEventListener("click", () => {
+  if (requireAdmin()) exportMonthlyReport();
+});
+importEmployeesButton.addEventListener("click", () => {
+  if (requireAdmin()) importEmployeesFromFile();
+});
 document.querySelector("#clearFilterButton").addEventListener("click", () => {
+  if (!requireAdmin()) return;
   dateFilter.value = "";
   employeeNameFilter.value = "";
   employeeIdFilter.value = "";
@@ -1004,6 +1065,7 @@ document.querySelector("#clearFilterButton").addEventListener("click", () => {
   renderAdmin();
 });
 document.querySelector("#clearButton").addEventListener("click", () => {
+  if (!requireAdmin()) return;
   if (!confirm("確定要清空目前瀏覽器裡的打卡測試資料？員工資料會保留。")) return;
   saveRecords([]);
   renderAdmin();

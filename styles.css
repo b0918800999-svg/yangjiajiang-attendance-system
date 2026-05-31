@@ -458,10 +458,15 @@ textarea:focus {
 .admin-login {
   display: grid;
   max-width: 560px;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr 1fr auto;
   align-items: end;
   gap: 16px;
   padding: 20px;
+}
+
+.admin-login-message {
+  grid-column: 1 / -1;
+  color: var(--red);
 }
 
 .admin-panel {
@@ -470,6 +475,10 @@ textarea:focus {
 }
 
 .release-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 14px 18px;
   border: 1px solid rgba(201, 154, 46, 0.45);
   border-radius: 18px;
@@ -702,6 +711,11 @@ small {
   .stats,
   .admin-stat-grid {
     grid-template-columns: 1fr;
+  }
+
+  .release-note {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .clock-form {
