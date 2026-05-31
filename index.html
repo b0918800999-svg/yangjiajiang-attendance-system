@@ -44,20 +44,34 @@
                 員工編號
                 <input id="employeeIdInput" name="employeeId" type="text" autocomplete="off" placeholder="例如：E001" required />
               </label>
-              <label for="employeeNameInput">
-                姓名
-                <input id="employeeNameInput" name="employeeName" type="text" autocomplete="name" placeholder="請輸入姓名" required />
+              <label for="clockPasswordInput">
+                打卡密碼
+                <input id="clockPasswordInput" name="clockPassword" type="password" autocomplete="current-password" placeholder="請輸入打卡密碼" required />
               </label>
             </div>
-            <label for="departmentSelect">
-              部門
-              <select id="departmentSelect" name="department" required>
-                <option value="行政部">行政部</option>
-                <option value="業務部">業務部</option>
-                <option value="客服部">客服部</option>
-                <option value="工程部">工程部</option>
-                <option value="營運部">營運部</option>
-                <option value="其他">其他</option>
+            <div class="form-row">
+              <label for="employeeNameInput">
+                姓名
+                <input id="employeeNameInput" name="employeeName" type="text" autocomplete="name" placeholder="輸入員工編號後自動帶入" />
+              </label>
+              <label for="departmentSelect">
+                部門
+                <select id="departmentSelect" name="department" required>
+                  <option value="行政部">行政部</option>
+                  <option value="業務部">業務部</option>
+                  <option value="客服部">客服部</option>
+                  <option value="工程部">工程部</option>
+                  <option value="營運部">營運部</option>
+                  <option value="其他">其他</option>
+                </select>
+              </label>
+            </div>
+            <label for="workSiteSelect">
+              工作據點
+              <select id="workSiteSelect" name="workSite" required>
+                <option value="南崁">南崁</option>
+                <option value="平鎮">平鎮</option>
+                <option value="支援外點">支援外點</option>
               </select>
             </label>
             <label for="noteInput">
@@ -196,6 +210,20 @@
                   <input id="employeeManagePhone" name="phone" type="tel" placeholder="例如：0912-345-678" />
                 </label>
               </div>
+              <div class="form-row">
+                <label for="employeeManagePassword">
+                  打卡密碼
+                  <input id="employeeManagePassword" name="clockPassword" type="text" placeholder="預設 1234" required />
+                </label>
+                <label for="employeeManageWorkSite">
+                  工作據點
+                  <select id="employeeManageWorkSite" name="workSite" required>
+                    <option value="南崁">南崁</option>
+                    <option value="平鎮">平鎮</option>
+                    <option value="支援外點">支援外點</option>
+                  </select>
+                </label>
+              </div>
               <label for="employeeManageStatus">
                 狀態
                 <select id="employeeManageStatus" name="status" required>
@@ -239,6 +267,7 @@
                   <th>部門</th>
                   <th>職稱</th>
                   <th>手機號碼</th>
+                  <th>工作據點</th>
                   <th>到職日</th>
                   <th>狀態</th>
                   <th>備註</th>
@@ -257,6 +286,7 @@
                   <th>時間</th>
                   <th>員工</th>
                   <th>部門</th>
+                  <th>據點</th>
                   <th>動作</th>
                   <th>狀態</th>
                   <th>備註</th>

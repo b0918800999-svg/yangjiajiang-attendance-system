@@ -24,6 +24,8 @@ const employeeManageName = document.querySelector("#employeeManageName");
 const employeeManageDepartment = document.querySelector("#employeeManageDepartment");
 const employeeManageTitle = document.querySelector("#employeeManageTitle");
 const employeeManagePhone = document.querySelector("#employeeManagePhone");
+const employeeManagePassword = document.querySelector("#employeeManagePassword");
+const employeeManageWorkSite = document.querySelector("#employeeManageWorkSite");
 const employeeManageStartDate = document.querySelector("#employeeManageStartDate");
 const employeeManageStatus = document.querySelector("#employeeManageStatus");
 const employeeManageNote = document.querySelector("#employeeManageNote");
@@ -33,8 +35,10 @@ const employeeImportFile = document.querySelector("#employeeImportFile");
 const importEmployeesButton = document.querySelector("#importEmployeesButton");
 const importMessage = document.querySelector("#importMessage");
 const employeeIdInput = document.querySelector("#employeeIdInput");
+const clockPasswordInput = document.querySelector("#clockPasswordInput");
 const employeeNameInput = document.querySelector("#employeeNameInput");
 const departmentSelect = document.querySelector("#departmentSelect");
+const workSiteSelect = document.querySelector("#workSiteSelect");
 const stats = document.querySelector("#stats");
 const todayStats = document.querySelector("#todayStats");
 const recentList = document.querySelector("#recentList");
@@ -86,6 +90,8 @@ function normalizeEmployee(employee) {
     department: String(employee.department || "其他").trim(),
     title: String(employee.title || employee.position || "").trim(),
     phone: String(employee.phone || employee.mobile || "").trim(),
+    clockPassword: String(employee.clockPassword || employee.password || "1234").trim(),
+    workSite: ["南崁", "平鎮", "支援外點"].includes(employee.workSite) ? employee.workSite : "南崁",
     startDate: employee.startDate || formatDateValue(new Date()),
     status: employee.status === "離職" ? "離職" : "在職",
     note: String(employee.note || "").trim(),
@@ -238,7 +244,7 @@ function renderEmployeeTable() {
   const employees = [...getEmployees()].sort((a, b) => a.employeeId.localeCompare(b.employeeId));
 
   if (!employees.length) {
-    employeeTable.innerHTML = `<tr><td class="empty-state" colspan="9">目前尚未建立員工資料。</td></tr>`;
+    employeeTable.innerHTML = `<tr><td class="empty-state" colspan="10">目前尚未建立員工資料。</td></tr>`;
     return;
   }
 
@@ -251,6 +257,7 @@ function renderEmployeeTable() {
           <td>${escapeHtml(employee.department)}</td>
           <td>${escapeHtml(employee.title)}</td>
           <td>${escapeHtml(employee.phone)}</td>
+          <td>${escapeHtml(employee.workSite)}</td>
           <td>${escapeHtml(employee.startDate)}</td>
           <td><span class="badge ${employee.status === "在職" ? "in" : "out"}">${escapeHtml(employee.status)}</span></td>
           <td>${escapeHtml(employee.note)}</td>
@@ -283,7 +290,7 @@ function renderAdmin() {
   `;
 
   if (!records.length) {
-    attendanceTable.innerHTML = `<tr><td class="empty-state" colspan="8">目前沒有符合條件的打卡紀錄。</td></tr>`;
+    attendanceTable.innerHTML = `<tr><td class="empty-state" colspan="9">目前沒有符合條件的打卡紀錄。</td></tr>`;
     renderEmployeeTable();
     renderSummary();
     return;
@@ -297,6 +304,7 @@ function renderAdmin() {
           <td>${record.workTime}</td>
           <td><strong>${escapeHtml(record.employeeName)}</strong><br><small>${escapeHtml(record.employeeId)}</small></td>
           <td>${escapeHtml(record.department)}</td>
+          <td>${escapeHtml(record.workSite || "")}</td>
           <td><span class="badge ${record.action === "clock_in" ? "in" : "out"}">${actionLabels[record.action]}</span></td>
           <td>
             <select class="status-select" data-status-id="${record.id}">
@@ -325,6 +333,7 @@ function exportExcel() {
           <td>${escapeCell(record.employeeId)}</td>
           <td>${escapeCell(record.employeeName)}</td>
           <td>${escapeCell(record.department)}</td>
+          <td>${escapeCell(record.workSite || "")}</td>
           <td>${escapeCell(actionLabels[record.action])}</td>
           <td>${escapeCell(record.status)}</td>
           <td>${escapeCell(record.note)}</td>
@@ -344,6 +353,7 @@ function exportExcel() {
               <th>員工編號</th>
               <th>姓名</th>
               <th>部門</th>
+              <th>據點</th>
               <th>動作</th>
               <th>狀態</th>
               <th>備註</th>
@@ -375,10 +385,14 @@ function getMonthlyReportRows(monthValue = monthlyReportMonth.value || formatDat
       employeeId: record.employeeId,
       employeeName: record.employeeName,
       department: record.department,
+      workSite: record.workSite || "",
       clockIn: "",
       clockOut: "",
       notes: []
     };
+    if (!current.workSite && record.workSite) {
+      current.workSite = record.workSite;
+    }
     if (record.action === "clock_in" && (!current.clockIn || record.workTime < current.clockIn)) {
       current.clockIn = record.workTime;
     }
@@ -405,6 +419,7 @@ function exportMonthlyReport() {
           <td>${escapeHtml(row.employeeId)}</td>
           <td>${escapeHtml(row.employeeName)}</td>
           <td>${escapeHtml(row.department)}</td>
+          <td>${escapeHtml(row.workSite)}</td>
           <td>${escapeHtml(row.clockIn)}</td>
           <td>${escapeHtml(row.clockOut)}</td>
           <td>${escapeHtml([...new Set(row.notes)].join(" / "))}</td>
@@ -423,6 +438,7 @@ function exportMonthlyReport() {
               <th>員工編號</th>
               <th>姓名</th>
               <th>部門</th>
+              <th>據點</th>
               <th>上班時間</th>
               <th>下班時間</th>
               <th>備註</th>
@@ -529,6 +545,7 @@ function autofillEmployee(employeeId) {
   if (!employee) return;
   employeeNameInput.value = employee.name;
   departmentSelect.value = employee.department;
+  workSiteSelect.value = employee.workSite;
 }
 
 function resetEmployeeForm() {
@@ -550,13 +567,15 @@ function submitEmployee(event) {
     department: data.get("department"),
     title: data.get("title").trim(),
     phone: data.get("phone").trim(),
+    clockPassword: data.get("clockPassword").trim(),
+    workSite: data.get("workSite"),
     startDate: data.get("startDate"),
     status: data.get("status"),
     note: data.get("note").trim(),
     updatedAt: new Date().toISOString()
   };
 
-  if (!employee.employeeId || !employee.name || !employee.startDate) {
+  if (!employee.employeeId || !employee.name || !employee.clockPassword || !employee.startDate) {
     employeeMessage.textContent = "請完整填寫員工資料。";
     return;
   }
@@ -575,7 +594,8 @@ function submitEmployee(event) {
           ? {
               ...record,
               employeeName: employee.name,
-              department: employee.department
+              department: employee.department,
+              workSite: employee.workSite
             }
           : record
       )
@@ -605,6 +625,8 @@ function editEmployee(employeeId) {
   employeeManageDepartment.value = employee.department;
   employeeManageTitle.value = employee.title;
   employeeManagePhone.value = employee.phone;
+  employeeManagePassword.value = employee.clockPassword;
+  employeeManageWorkSite.value = employee.workSite;
   employeeManageStartDate.value = employee.startDate;
   employeeManageStatus.value = employee.status;
   employeeManageNote.value = employee.note;
@@ -632,6 +654,8 @@ function submitAttendance(event) {
   event.preventDefault();
   const data = new FormData(clockForm);
   const employeeId = normalizeEmployeeId(data.get("employeeId"));
+  const clockPassword = String(data.get("clockPassword") || "").trim();
+  const workSite = data.get("workSite");
   const employee = findEmployee(employeeId);
 
   if (!employee) {
@@ -644,6 +668,11 @@ function submitAttendance(event) {
     showToast("員工非在職");
     return;
   }
+  if (employee.clockPassword !== clockPassword) {
+    formMessage.textContent = "打卡密碼不正確，請重新輸入。";
+    showToast("密碼錯誤");
+    return;
+  }
 
   const now = new Date();
   const record = {
@@ -651,6 +680,7 @@ function submitAttendance(event) {
     employeeId: employee.employeeId,
     employeeName: employee.name,
     department: employee.department,
+    workSite,
     action: submitterAction,
     workDate: formatDateValue(now),
     workTime: formatTimeValue(now),
@@ -686,6 +716,8 @@ function ensureDefaultEmployee() {
     department: "行政部",
     title: "",
     phone: "",
+    clockPassword: "1234",
+    workSite: "南崁",
     startDate: formatDateValue(new Date()),
     status: "在職",
     note: "",
@@ -705,6 +737,8 @@ function ensureDefaultEmployee() {
               department: "行政部",
               title: employee.title || "",
               phone: employee.phone || "",
+              clockPassword: employee.clockPassword || "1234",
+              workSite: employee.workSite || "南崁",
               status: "在職",
               startDate: employee.startDate || defaultEmployee.startDate,
               note: employee.note || "",
