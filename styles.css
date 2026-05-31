@@ -469,6 +469,16 @@ textarea:focus {
   gap: 18px;
 }
 
+.release-note {
+  padding: 14px 18px;
+  border: 1px solid rgba(201, 154, 46, 0.45);
+  border-radius: 18px;
+  color: var(--blue);
+  background: linear-gradient(135deg, rgba(242, 207, 120, 0.2), rgba(255, 255, 255, 0.92));
+  box-shadow: var(--shadow-soft);
+  font-weight: 900;
+}
+
 .hidden {
   display: none;
 }

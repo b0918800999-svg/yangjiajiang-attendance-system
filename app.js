@@ -257,43 +257,7 @@ function recalculateRecordStatuses(records) {
 
 function renderEmployeeMonthlyStats() {
   const monthValue = monthlyReportMonth.value || formatDateValue(new Date()).slice(0, 7);
-  const rows = buildDailyAttendanceRows(getRecords(), getEmployees(), { monthValue });
-  const grouped = new Map();
-
-  getEmployees()
-    .filter((employee) => employee.status === "在職")
-    .forEach((employee) => {
-      grouped.set(employee.employeeId, {
-        employeeId: employee.employeeId,
-        employeeName: employee.name,
-        workSite: employee.workSite,
-        attendanceDays: 0,
-        lateCount: 0,
-        earlyCount: 0,
-        missingCount: 0
-      });
-    });
-
-  rows.forEach((row) => {
-    const current =
-      grouped.get(row.employeeId) ||
-      {
-        employeeId: row.employeeId,
-        employeeName: row.employeeName,
-        workSite: row.workSite,
-        attendanceDays: 0,
-        lateCount: 0,
-        earlyCount: 0,
-        missingCount: 0
-      };
-    current.attendanceDays += row.clockIn || row.clockOut ? 1 : 0;
-    current.lateCount += row.late ? 1 : 0;
-    current.earlyCount += row.early ? 1 : 0;
-    current.missingCount += row.missing ? 1 : 0;
-    grouped.set(row.employeeId, current);
-  });
-
-  const statsRows = [...grouped.values()].sort((a, b) => a.employeeId.localeCompare(b.employeeId));
+  const statsRows = getMonthlyEmployeeReportRows(monthValue);
   if (!statsRows.length) {
     employeeMonthlyStats.innerHTML = `<tr><td class="empty-state" colspan="7">目前沒有員工月統計資料。</td></tr>`;
     return;
@@ -314,6 +278,58 @@ function renderEmployeeMonthlyStats() {
       `
     )
     .join("");
+}
+
+function getMonthlyEmployeeReportRows(monthValue = monthlyReportMonth.value || formatDateValue(new Date()).slice(0, 7)) {
+  const dailyRows = buildDailyAttendanceRows(getRecords(), getEmployees(), { monthValue });
+  const grouped = new Map();
+
+  getEmployees()
+    .forEach((employee) => {
+      grouped.set(employee.employeeId, {
+        employeeId: employee.employeeId,
+        employeeName: employee.name,
+        department: employee.department,
+        workSite: employee.workSite,
+        attendanceDays: 0,
+        lateCount: 0,
+        earlyCount: 0,
+        missingCount: 0,
+        clockInRecords: [],
+        clockOutRecords: [],
+        notes: []
+      });
+    });
+
+  dailyRows.forEach((row) => {
+    const current =
+      grouped.get(row.employeeId) ||
+      {
+        employeeId: row.employeeId,
+        employeeName: row.employeeName,
+        department: row.department,
+        workSite: row.workSite,
+        attendanceDays: 0,
+        lateCount: 0,
+        earlyCount: 0,
+        missingCount: 0,
+        clockInRecords: [],
+        clockOutRecords: [],
+        notes: []
+      };
+    current.attendanceDays += row.clockIn || row.clockOut ? 1 : 0;
+    current.lateCount += row.late ? 1 : 0;
+    current.earlyCount += row.early ? 1 : 0;
+    current.missingCount += row.missing ? 1 : 0;
+    current.clockInRecords.push(`${row.date} ${row.clockIn || "未打卡"}`);
+    current.clockOutRecords.push(`${row.date} ${row.clockOut || "未打卡"}`);
+    if (row.notes.length) {
+      current.notes.push(...row.notes);
+    }
+    grouped.set(row.employeeId, current);
+  });
+
+  return [...grouped.values()].sort((a, b) => a.employeeId.localeCompare(b.employeeId));
 }
 
 function formatDisplayDate(date) {
@@ -574,53 +590,40 @@ function getMonthlyReportRows(monthValue = monthlyReportMonth.value || formatDat
   return buildDailyAttendanceRows(getRecords(), getEmployees(), { monthValue });
 }
 
+function escapeCsvCell(value) {
+  const text = String(value ?? "");
+  if (/[",\n]/.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+  return text;
+}
+
 function exportMonthlyReport() {
   const monthValue = monthlyReportMonth.value || formatDateValue(new Date()).slice(0, 7);
-  const rows = getMonthlyReportRows(monthValue);
-  const bodyRows = rows
-    .map(
-      (row) => `
-        <tr>
-          <td>${escapeHtml(row.employeeId)}</td>
-          <td>${escapeHtml(row.employeeName)}</td>
-          <td>${escapeHtml(row.workSite)}</td>
-          <td>${escapeHtml(row.date)}</td>
-          <td>${escapeHtml(row.clockIn)}</td>
-          <td>${escapeHtml(row.clockOut)}</td>
-          <td>${escapeHtml(row.workHours)}</td>
-          <td>${escapeHtml(row.status)}</td>
-        </tr>
-      `
-    )
-    .join("");
-  const workbook = `
-    <html>
-      <head><meta charset="UTF-8" /></head>
-      <body>
-        <table border="1">
-          <thead>
-            <tr>
-              <th>員工編號</th>
-              <th>姓名</th>
-              <th>據點</th>
-              <th>日期</th>
-              <th>上班時間</th>
-              <th>下班時間</th>
-              <th>工作時數</th>
-              <th>狀態</th>
-            </tr>
-          </thead>
-          <tbody>${bodyRows}</tbody>
-        </table>
-      </body>
-    </html>
-  `;
-
-  const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const headers = ["員工編號", "姓名", "部門", "據點", "出勤天數", "遲到次數", "早退次數", "缺卡次數", "上班紀錄", "下班紀錄", "備註"];
+  const rows = getMonthlyEmployeeReportRows(monthValue);
+  const csvRows = [
+    headers,
+    ...rows.map((row) => [
+      row.employeeId,
+      row.employeeName,
+      row.department,
+      row.workSite,
+      row.attendanceDays,
+      row.lateCount,
+      row.earlyCount,
+      row.missingCount,
+      row.clockInRecords.join("；"),
+      row.clockOutRecords.join("；"),
+      [...new Set(row.notes)].join("；")
+    ])
+  ];
+  const csv = `\uFEFF${csvRows.map((row) => row.map(escapeCsvCell).join(",")).join("\n")}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `attendance-monthly-${monthValue}.xls`;
+  link.download = `楊家將_${monthValue}_出勤月報表.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
