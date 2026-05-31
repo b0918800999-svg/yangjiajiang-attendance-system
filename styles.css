@@ -501,6 +501,24 @@ textarea:focus {
   font-weight: 900;
 }
 
+.stats {
+  width: 100%;
+}
+
+.stats,
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+}
+
+.admin-stat-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compact-table {
+  min-width: 820px;
+}
+
 .filter-label {
   grid-template-columns: auto 160px;
   align-items: center;
@@ -619,6 +637,10 @@ small {
     grid-template-columns: 1fr 1fr;
   }
 
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .recent-box {
     grid-column: 1 / -1;
   }
@@ -666,7 +688,9 @@ small {
   .form-row,
   .admin-login,
   .status-grid,
-  .summary-panel {
+  .summary-panel,
+  .stats,
+  .admin-stat-grid {
     grid-template-columns: 1fr;
   }
 

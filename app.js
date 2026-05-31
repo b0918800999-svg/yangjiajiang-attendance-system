@@ -5,7 +5,12 @@ const actionLabels = {
   clock_in: "上班",
   clock_out: "下班"
 };
-const allowedStatuses = ["正常", "遲到", "早退", "補打卡", "異常"];
+const allowedStatuses = ["正常", "遲到", "早退", "缺卡", "補打卡", "異常"];
+const workSiteRules = {
+  南崁: { start: "08:00", end: "17:00" },
+  平鎮: { start: "09:00", end: "18:00" }
+};
+const reportWorkSites = ["南崁", "平鎮"];
 
 const clockForm = document.querySelector("#clockForm");
 const formMessage = document.querySelector("#formMessage");
@@ -40,6 +45,8 @@ const employeeNameInput = document.querySelector("#employeeNameInput");
 const departmentSelect = document.querySelector("#departmentSelect");
 const workSiteSelect = document.querySelector("#workSiteSelect");
 const stats = document.querySelector("#stats");
+const siteStats = document.querySelector("#siteStats");
+const employeeMonthlyStats = document.querySelector("#employeeMonthlyStats");
 const todayStats = document.querySelector("#todayStats");
 const recentList = document.querySelector("#recentList");
 const dataMode = document.querySelector("#dataMode");
@@ -79,8 +86,8 @@ function getEmployees() {
 }
 
 function saveRecords(records) {
-  cachedRecords = records;
-  saveJson(RECORDS_STORAGE_KEY, records);
+  cachedRecords = recalculateRecordStatuses(records);
+  saveJson(RECORDS_STORAGE_KEY, cachedRecords);
 }
 
 function normalizeEmployee(employee) {
@@ -137,6 +144,170 @@ function formatDateValue(date) {
 
 function formatTimeValue(date) {
   return date.toTimeString().slice(0, 8);
+}
+
+function timeToMinutes(value) {
+  const [hours = 0, minutes = 0] = String(value || "00:00").split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function getEmployeeById(employeeId, employees = getEmployees()) {
+  const normalizedId = normalizeEmployeeId(employeeId);
+  return employees.find((employee) => employee.employeeId === normalizedId);
+}
+
+function getRecordWorkSite(record, employees = getEmployees()) {
+  return record.workSite || getEmployeeById(record.employeeId, employees)?.workSite || "南崁";
+}
+
+function getAttendanceFlags(row) {
+  const rule = workSiteRules[row.workSite];
+  const missing = !row.clockIn || !row.clockOut;
+  const late = Boolean(!missing && rule && timeToMinutes(row.clockIn) > timeToMinutes(rule.start));
+  const early = Boolean(!missing && rule && timeToMinutes(row.clockOut) < timeToMinutes(rule.end));
+  const status = missing ? "缺卡" : late ? "遲到" : early ? "早退" : "正常";
+  return { missing, late, early, status };
+}
+
+function calculateWorkHours(clockIn, clockOut) {
+  if (!clockIn || !clockOut) return "";
+  const minutes = timeToMinutes(clockOut) - timeToMinutes(clockIn);
+  if (minutes <= 0) return "";
+  return (minutes / 60).toFixed(2);
+}
+
+function buildDailyAttendanceRows(records = getRecords(), employees = getEmployees(), options = {}) {
+  const grouped = new Map();
+  const { monthValue = "", dateValue = "" } = options;
+
+  records
+    .filter((record) => !monthValue || record.workDate.startsWith(monthValue))
+    .filter((record) => !dateValue || record.workDate === dateValue)
+    .forEach((record) => {
+      const employee = getEmployeeById(record.employeeId, employees);
+      const key = `${record.workDate}-${record.employeeId}`;
+      const current = grouped.get(key) || {
+        date: record.workDate,
+        employeeId: record.employeeId,
+        employeeName: record.employeeName || employee?.name || "",
+        department: record.department || employee?.department || "",
+        workSite: getRecordWorkSite(record, employees),
+        clockIn: "",
+        clockOut: "",
+        notes: []
+      };
+
+      if (!current.workSite && record.workSite) {
+        current.workSite = record.workSite;
+      }
+      if (record.action === "clock_in" && (!current.clockIn || record.workTime < current.clockIn)) {
+        current.clockIn = record.workTime;
+      }
+      if (record.action === "clock_out" && (!current.clockOut || record.workTime > current.clockOut)) {
+        current.clockOut = record.workTime;
+      }
+      if (record.note) {
+        current.notes.push(record.note);
+      }
+      grouped.set(key, current);
+    });
+
+  return [...grouped.values()]
+    .map((row) => {
+      const flags = getAttendanceFlags(row);
+      return {
+        ...row,
+        workHours: calculateWorkHours(row.clockIn, row.clockOut),
+        status: flags.status,
+        late: flags.late,
+        early: flags.early,
+        missing: flags.missing
+      };
+    })
+    .sort((a, b) => `${a.date}${a.employeeId}`.localeCompare(`${b.date}${b.employeeId}`));
+}
+
+function recalculateRecordStatuses(records) {
+  const employees = cachedEmployees.length ? cachedEmployees : loadEmployees();
+  const dailyRows = buildDailyAttendanceRows(records, employees);
+  const rowMap = new Map(dailyRows.map((row) => [`${row.date}-${row.employeeId}`, row]));
+
+  return records.map((record) => {
+    if (record.statusOverride) {
+      return { ...record, workSite: getRecordWorkSite(record, employees), status: record.statusOverride };
+    }
+    const row = rowMap.get(`${record.workDate}-${record.employeeId}`);
+    let status = "正常";
+    if (row?.missing) {
+      status = "缺卡";
+    } else if (record.action === "clock_in" && row?.late) {
+      status = "遲到";
+    } else if (record.action === "clock_out" && row?.early) {
+      status = "早退";
+    }
+    return { ...record, workSite: getRecordWorkSite(record, employees), status };
+  });
+}
+
+function renderEmployeeMonthlyStats() {
+  const monthValue = monthlyReportMonth.value || formatDateValue(new Date()).slice(0, 7);
+  const rows = buildDailyAttendanceRows(getRecords(), getEmployees(), { monthValue });
+  const grouped = new Map();
+
+  getEmployees()
+    .filter((employee) => employee.status === "在職")
+    .forEach((employee) => {
+      grouped.set(employee.employeeId, {
+        employeeId: employee.employeeId,
+        employeeName: employee.name,
+        workSite: employee.workSite,
+        attendanceDays: 0,
+        lateCount: 0,
+        earlyCount: 0,
+        missingCount: 0
+      });
+    });
+
+  rows.forEach((row) => {
+    const current =
+      grouped.get(row.employeeId) ||
+      {
+        employeeId: row.employeeId,
+        employeeName: row.employeeName,
+        workSite: row.workSite,
+        attendanceDays: 0,
+        lateCount: 0,
+        earlyCount: 0,
+        missingCount: 0
+      };
+    current.attendanceDays += row.clockIn || row.clockOut ? 1 : 0;
+    current.lateCount += row.late ? 1 : 0;
+    current.earlyCount += row.early ? 1 : 0;
+    current.missingCount += row.missing ? 1 : 0;
+    grouped.set(row.employeeId, current);
+  });
+
+  const statsRows = [...grouped.values()].sort((a, b) => a.employeeId.localeCompare(b.employeeId));
+  if (!statsRows.length) {
+    employeeMonthlyStats.innerHTML = `<tr><td class="empty-state" colspan="7">目前沒有員工月統計資料。</td></tr>`;
+    return;
+  }
+
+  employeeMonthlyStats.innerHTML = statsRows
+    .map(
+      (row) => `
+        <tr>
+          <td><strong>${escapeHtml(row.employeeId)}</strong></td>
+          <td>${escapeHtml(row.employeeName)}</td>
+          <td>${escapeHtml(row.workSite)}</td>
+          <td>${row.attendanceDays}</td>
+          <td>${row.lateCount}</td>
+          <td>${row.earlyCount}</td>
+          <td>${row.missingCount}</td>
+        </tr>
+      `
+    )
+    .join("");
 }
 
 function formatDisplayDate(date) {
@@ -275,19 +446,40 @@ function renderAdmin() {
   const records = getFilteredRecords();
   const allRecords = getRecords();
   const employees = getEmployees();
-  const activeEmployees = employees.filter((employee) => employee.status === "在職").length;
+  const activeEmployees = employees.filter((employee) => employee.status === "在職");
   const today = formatDateValue(new Date());
-  const todayCount = allRecords.filter((record) => record.workDate === today).length;
-  const abnormalCount = allRecords.filter((record) => ["遲到", "早退", "異常"].includes(record.status)).length;
+  const todayRows = buildDailyAttendanceRows(allRecords, employees, { dateValue: today });
+  const todayAttendanceCount = todayRows.filter((row) => row.clockIn || row.clockOut).length;
+  const lateCount = todayRows.filter((row) => row.late).length;
+  const earlyCount = todayRows.filter((row) => row.early).length;
+  const missingCount = todayRows.filter((row) => row.missing).length;
+  const siteCards = reportWorkSites
+    .map((site) => {
+      const siteEmployees = activeEmployees.filter((employee) => employee.workSite === site);
+      const siteAttendanceIds = new Set(
+        todayRows
+          .filter((row) => row.workSite === site && (row.clockIn || row.clockOut))
+          .map((row) => row.employeeId)
+      );
+      return `
+        <div class="status-card">
+          <span>${site}</span>
+          <strong>${siteAttendanceIds.size}/${siteEmployees.length}</strong>
+          <small>員工數 ${siteEmployees.length} / 今日出勤 ${siteAttendanceIds.size} / 未打卡 ${Math.max(siteEmployees.length - siteAttendanceIds.size, 0)}</small>
+        </div>
+      `;
+    })
+    .join("");
 
   stats.innerHTML = `
-    <span class="stat">員工 ${employees.length}</span>
-    <span class="stat">在職 ${activeEmployees}</span>
-    <span class="stat">總紀錄 ${allRecords.length}</span>
-    <span class="stat">今日 ${todayCount}</span>
-    <span class="stat">需注意 ${abnormalCount}</span>
-    <span class="stat">本機模式</span>
+    <div class="status-card"><span>總員工</span><strong>${employees.length}</strong></div>
+    <div class="status-card"><span>今日出勤</span><strong>${todayAttendanceCount}</strong></div>
+    <div class="status-card"><span>遲到人數</span><strong>${lateCount}</strong></div>
+    <div class="status-card"><span>早退人數</span><strong>${earlyCount}</strong></div>
+    <div class="status-card"><span>缺卡人數</span><strong>${missingCount}</strong></div>
   `;
+  siteStats.innerHTML = siteCards;
+  renderEmployeeMonthlyStats();
 
   if (!records.length) {
     attendanceTable.innerHTML = `<tr><td class="empty-state" colspan="9">目前沒有符合條件的打卡紀錄。</td></tr>`;
@@ -322,21 +514,20 @@ function renderAdmin() {
 }
 
 function exportExcel() {
-  const rows = getFilteredRecords();
+  const rows = buildDailyAttendanceRows(getFilteredRecords(), getEmployees());
   const escapeCell = (value) => escapeHtml(value);
   const bodyRows = rows
     .map(
-      (record) => `
+      (row) => `
         <tr>
-          <td>${escapeCell(record.workDate)}</td>
-          <td>${escapeCell(record.workTime)}</td>
-          <td>${escapeCell(record.employeeId)}</td>
-          <td>${escapeCell(record.employeeName)}</td>
-          <td>${escapeCell(record.department)}</td>
-          <td>${escapeCell(record.workSite || "")}</td>
-          <td>${escapeCell(actionLabels[record.action])}</td>
-          <td>${escapeCell(record.status)}</td>
-          <td>${escapeCell(record.note)}</td>
+          <td>${escapeCell(row.employeeId)}</td>
+          <td>${escapeCell(row.employeeName)}</td>
+          <td>${escapeCell(row.workSite)}</td>
+          <td>${escapeCell(row.date)}</td>
+          <td>${escapeCell(row.clockIn)}</td>
+          <td>${escapeCell(row.clockOut)}</td>
+          <td>${escapeCell(row.workHours)}</td>
+          <td>${escapeCell(row.status)}</td>
         </tr>
       `
     )
@@ -348,15 +539,14 @@ function exportExcel() {
         <table border="1">
           <thead>
             <tr>
-              <th>日期</th>
-              <th>時間</th>
               <th>員工編號</th>
               <th>姓名</th>
-              <th>部門</th>
               <th>據點</th>
-              <th>動作</th>
+              <th>日期</th>
+              <th>上班時間</th>
+              <th>下班時間</th>
+              <th>工作時數</th>
               <th>狀態</th>
-              <th>備註</th>
             </tr>
           </thead>
           <tbody>${bodyRows}</tbody>
@@ -375,37 +565,7 @@ function exportExcel() {
 }
 
 function getMonthlyReportRows(monthValue = monthlyReportMonth.value || formatDateValue(new Date()).slice(0, 7)) {
-  const monthRecords = getRecords().filter((record) => record.workDate.startsWith(monthValue));
-  const grouped = new Map();
-
-  monthRecords.forEach((record) => {
-    const key = `${record.workDate}-${record.employeeId}`;
-    const current = grouped.get(key) || {
-      date: record.workDate,
-      employeeId: record.employeeId,
-      employeeName: record.employeeName,
-      department: record.department,
-      workSite: record.workSite || "",
-      clockIn: "",
-      clockOut: "",
-      notes: []
-    };
-    if (!current.workSite && record.workSite) {
-      current.workSite = record.workSite;
-    }
-    if (record.action === "clock_in" && (!current.clockIn || record.workTime < current.clockIn)) {
-      current.clockIn = record.workTime;
-    }
-    if (record.action === "clock_out" && (!current.clockOut || record.workTime > current.clockOut)) {
-      current.clockOut = record.workTime;
-    }
-    if (record.note) {
-      current.notes.push(record.note);
-    }
-    grouped.set(key, current);
-  });
-
-  return [...grouped.values()].sort((a, b) => `${a.date}${a.employeeId}`.localeCompare(`${b.date}${b.employeeId}`));
+  return buildDailyAttendanceRows(getRecords(), getEmployees(), { monthValue });
 }
 
 function exportMonthlyReport() {
@@ -415,14 +575,14 @@ function exportMonthlyReport() {
     .map(
       (row) => `
         <tr>
-          <td>${escapeHtml(row.date)}</td>
           <td>${escapeHtml(row.employeeId)}</td>
           <td>${escapeHtml(row.employeeName)}</td>
-          <td>${escapeHtml(row.department)}</td>
           <td>${escapeHtml(row.workSite)}</td>
+          <td>${escapeHtml(row.date)}</td>
           <td>${escapeHtml(row.clockIn)}</td>
           <td>${escapeHtml(row.clockOut)}</td>
-          <td>${escapeHtml([...new Set(row.notes)].join(" / "))}</td>
+          <td>${escapeHtml(row.workHours)}</td>
+          <td>${escapeHtml(row.status)}</td>
         </tr>
       `
     )
@@ -434,14 +594,14 @@ function exportMonthlyReport() {
         <table border="1">
           <thead>
             <tr>
-              <th>日期</th>
               <th>員工編號</th>
               <th>姓名</th>
-              <th>部門</th>
               <th>據點</th>
+              <th>日期</th>
               <th>上班時間</th>
               <th>下班時間</th>
-              <th>備註</th>
+              <th>工作時數</th>
+              <th>狀態</th>
             </tr>
           </thead>
           <tbody>${bodyRows}</tbody>
@@ -703,7 +863,7 @@ function deleteRecord(id) {
 }
 
 function updateRecordStatus(id, status) {
-  saveRecords(getRecords().map((record) => (record.id === id ? { ...record, status } : record)));
+  saveRecords(getRecords().map((record) => (record.id === id ? { ...record, status, statusOverride: status } : record)));
   renderAdmin();
   showToast("狀態已更新");
 }
@@ -787,7 +947,7 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("change", (event) => {
-  if ([dateFilter, departmentFilter, actionFilter].includes(event.target)) {
+  if ([dateFilter, departmentFilter, actionFilter, monthlyReportMonth].includes(event.target)) {
     renderAdmin();
   }
 
@@ -841,8 +1001,9 @@ document.querySelector("#clearButton").addEventListener("click", () => {
 });
 
 function init() {
-  cachedRecords = loadJson(RECORDS_STORAGE_KEY);
   cachedEmployees = loadEmployees();
+  cachedRecords = recalculateRecordStatuses(loadJson(RECORDS_STORAGE_KEY));
+  saveJson(RECORDS_STORAGE_KEY, cachedRecords);
   ensureDefaultEmployee();
   renderClock();
   window.setInterval(renderClock, 1000);
