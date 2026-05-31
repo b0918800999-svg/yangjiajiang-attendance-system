@@ -126,6 +126,7 @@ function saveEmployees(employees) {
   const normalizedEmployees = normalizeEmployees(employees);
   cachedEmployees = normalizedEmployees;
   saveJson(EMPLOYEES_STORAGE_KEY, normalizedEmployees);
+  renderClockEmployeeSelect();
 }
 
 function loadEmployees() {
@@ -401,8 +402,30 @@ function normalizeEmployeeId(value) {
 
 function findEmployee(employeeId) {
   const normalizedId = normalizeEmployeeId(employeeId);
-  cachedEmployees = loadEmployees();
+  if (!cachedEmployees.length) {
+    cachedEmployees = normalizeEmployees(loadJson(EMPLOYEES_STORAGE_KEY));
+  }
   return cachedEmployees.find((employee) => employee.employeeId === normalizedId);
+}
+
+function renderClockEmployeeSelect() {
+  if (!employeeIdInput) return;
+  const selectedEmployeeId = employeeIdInput.value;
+  const activeEmployees = getEmployees()
+    .filter((employee) => employee.status === "在職")
+    .sort((a, b) => a.employeeId.localeCompare(b.employeeId));
+  const options = activeEmployees
+    .map(
+      (employee) =>
+        `<option value="${escapeHtml(employee.employeeId)}">${escapeHtml(employee.employeeId)} - ${escapeHtml(employee.name)}</option>`
+    )
+    .join("");
+
+  employeeIdInput.innerHTML = `<option value="">請選擇員工</option>${options}`;
+  if (activeEmployees.some((employee) => employee.employeeId === selectedEmployeeId)) {
+    employeeIdInput.value = selectedEmployeeId;
+  }
+  autofillEmployee(employeeIdInput.value);
 }
 
 function renderClock() {
@@ -750,7 +773,12 @@ function importEmployeesFromFile() {
 
 function autofillEmployee(employeeId) {
   const employee = findEmployee(employeeId);
-  if (!employee) return;
+  if (!employee) {
+    employeeNameInput.value = "";
+    departmentSelect.value = "行政部";
+    workSiteSelect.value = "南崁";
+    return;
+  }
   employeeNameInput.value = employee.name;
   departmentSelect.value = employee.department;
   workSiteSelect.value = employee.workSite;

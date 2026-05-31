@@ -41,8 +41,10 @@
           <form class="clock-form" id="clockForm">
             <div class="form-row">
               <label for="employeeIdInput">
-                員工編號
-                <input id="employeeIdInput" name="employeeId" type="text" autocomplete="off" placeholder="例如：E001" required />
+                選擇員工
+                <select id="employeeIdInput" name="employeeId" required>
+                  <option value="">請選擇員工</option>
+                </select>
               </label>
               <label for="clockPasswordInput">
                 打卡密碼
@@ -52,11 +54,11 @@
             <div class="form-row">
               <label for="employeeNameInput">
                 姓名
-                <input id="employeeNameInput" name="employeeName" type="text" autocomplete="name" placeholder="輸入員工編號後自動帶入" />
+                <input id="employeeNameInput" name="employeeName" type="text" placeholder="選擇員工後自動帶入" readonly />
               </label>
               <label for="departmentSelect">
                 部門
-                <select id="departmentSelect" name="department" required>
+                <select id="departmentSelect" name="department" required disabled>
                   <option value="行政部">行政部</option>
                   <option value="倉儲部">倉儲部</option>
                   <option value="包裝部">包裝部</option>
