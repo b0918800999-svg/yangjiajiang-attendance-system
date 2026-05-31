@@ -1,0 +1,16 @@
+{
+  "name": "楊家將員工智慧打卡系統",
+  "short_name": "楊家將打卡",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef4fb",
+  "theme_color": "#07172f",
+  "description": "楊家將包裝設計有限公司 員工智慧打卡管理平台",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
