@@ -647,6 +647,49 @@ small {
   opacity: 1;
 }
 
+.install-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(7, 23, 47, 0.58);
+  backdrop-filter: blur(10px);
+}
+
+.install-prompt.hidden {
+  display: none;
+}
+
+.install-card {
+  display: grid;
+  width: min(420px, 100%);
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid rgba(242, 207, 120, 0.38);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.install-card img {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+}
+
+.install-card h2 {
+  margin-bottom: 8px;
+  font-size: 24px;
+}
+
+.install-card p {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 @media (max-width: 980px) {
   .workspace {
     grid-template-columns: 1fr;

@@ -59,11 +59,15 @@ const departmentFilter = document.querySelector("#departmentFilter");
 const actionFilter = document.querySelector("#actionFilter");
 const monthlyReportMonth = document.querySelector("#monthlyReportMonth");
 const toast = document.querySelector("#toast");
+const installPrompt = document.querySelector("#installPrompt");
+const installAppButton = document.querySelector("#installAppButton");
+const dismissInstallButton = document.querySelector("#dismissInstallButton");
 
 let cachedRecords = [];
 let cachedEmployees = [];
 let submitterAction = "clock_in";
 let isAdminLoggedIn = false;
+let deferredInstallPrompt = null;
 
 function loadJson(key) {
   try {
@@ -358,6 +362,32 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
   window.setTimeout(() => toast.classList.remove("show"), 2400);
+}
+
+function shouldShowInstallPrompt() {
+  return !localStorage.getItem("yang-install-prompt-seen") && !window.matchMedia("(display-mode: standalone)").matches;
+}
+
+function showInstallPrompt() {
+  if (shouldShowInstallPrompt()) {
+    installPrompt.classList.remove("hidden");
+  }
+}
+
+function closeInstallPrompt() {
+  localStorage.setItem("yang-install-prompt-seen", "1");
+  installPrompt.classList.add("hidden");
+}
+
+async function installApp() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+  } else {
+    showToast("請使用瀏覽器選單加入主畫面");
+  }
+  closeInstallPrompt();
 }
 
 function requireAdmin() {
@@ -1100,6 +1130,13 @@ document.querySelector("#clearButton").addEventListener("click", () => {
   showToast("打卡紀錄已清空");
 });
 
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+});
+installAppButton.addEventListener("click", installApp);
+dismissInstallButton.addEventListener("click", closeInstallPrompt);
+
 function init() {
   cachedEmployees = loadEmployees();
   cachedRecords = recalculateRecordStatuses(loadJson(RECORDS_STORAGE_KEY));
@@ -1108,6 +1145,7 @@ function init() {
   renderClock();
   window.setInterval(renderClock, 1000);
   renderAdmin();
+  showInstallPrompt();
 }
 
 init();

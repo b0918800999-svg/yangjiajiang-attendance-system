@@ -347,6 +347,20 @@
       </section>
     </main>
 
+    <div class="install-prompt hidden" id="installPrompt" role="dialog" aria-modal="true" aria-labelledby="installPromptTitle">
+      <div class="install-card">
+        <img src="apple-touch-icon.png" alt="楊家將 Logo" />
+        <div>
+          <h2 id="installPromptTitle">是否安裝楊家將打卡系統至主畫面</h2>
+          <p>安裝後可從手機主畫面快速開啟打卡系統。</p>
+        </div>
+        <div class="toolbar-actions">
+          <button class="solid-button" id="installAppButton" type="button">安裝</button>
+          <button class="ghost-button" id="dismissInstallButton" type="button">稍後</button>
+        </div>
+      </div>
+    </div>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script src="app.js"></script>
