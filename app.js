@@ -1,6 +1,9 @@
 const RECORDS_STORAGE_KEY = "employee-attendance-v1";
 const EMPLOYEES_STORAGE_KEY = "employees";
 const LEGACY_EMPLOYEES_STORAGE_KEY = "employee-directory-v1";
+const FIRESTORE_SYNC_STORAGE_KEY = "yang-firestore-sync-v1";
+const defaultDepartments = ["行政部", "倉儲部", "包裝部", "業務部", "主管", "其他"];
+const defaultWorkSites = ["南崁", "平鎮", "支援外點"];
 const actionLabels = {
   clock_in: "上班",
   clock_out: "下班"
@@ -68,6 +71,9 @@ let cachedEmployees = [];
 let submitterAction = "clock_in";
 let isAdminLoggedIn = false;
 let deferredInstallPrompt = null;
+let firebaseDb = null;
+let firestoreReady = false;
+let firestoreSyncing = false;
 
 function loadJson(key) {
   try {
@@ -84,6 +90,129 @@ function saveJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function getFirebaseConfig() {
+  return window.YANG_FIREBASE_CONFIG || {};
+}
+
+function isFirebaseConfigured() {
+  const config = getFirebaseConfig();
+  return Boolean(config.apiKey && config.projectId && !String(config.apiKey).startsWith("YOUR_") && !String(config.projectId).startsWith("YOUR_"));
+}
+
+function getFirestoreStatusText() {
+  if (firestoreReady) return "Firebase Firestore";
+  return isFirebaseConfigured() ? "本機資料庫 / Firebase 連線中" : "本機資料庫";
+}
+
+function firestoreCollection(name) {
+  if (!firebaseDb) return null;
+  return firebaseDb.collection(name);
+}
+
+async function readFirestoreCollection(name) {
+  const collection = firestoreCollection(name);
+  if (!collection) return [];
+  const snapshot = await collection.get();
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
+async function replaceFirestoreCollection(name, items, idKey) {
+  const collection = firestoreCollection(name);
+  if (!collection || firestoreSyncing) return;
+  const snapshot = await collection.get();
+  const batch = firebaseDb.batch();
+  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  items.forEach((item, index) => {
+    const id = String(item[idKey] || item.id || item.name || index);
+    batch.set(collection.doc(id), { ...item, syncedAt: new Date().toISOString() });
+  });
+  await batch.commit();
+}
+
+function syncEmployeesToFirestore() {
+  if (!firestoreReady) return;
+  replaceFirestoreCollection("employees", getEmployees(), "employeeId").catch((error) => console.warn("Firestore employees sync failed", error));
+}
+
+function syncRecordsToFirestore() {
+  if (!firestoreReady) return;
+  replaceFirestoreCollection("attendanceRecords", getRecords(), "id").catch((error) => console.warn("Firestore records sync failed", error));
+}
+
+function syncDirectoryToFirestore() {
+  if (!firestoreReady) return;
+  replaceFirestoreCollection(
+    "departments",
+    defaultDepartments.map((name, index) => ({ id: name, name, order: index + 1, active: true })),
+    "id"
+  ).catch((error) => console.warn("Firestore departments sync failed", error));
+  replaceFirestoreCollection(
+    "workSites",
+    defaultWorkSites.map((name, index) => ({ id: name, name, order: index + 1, active: true })),
+    "id"
+  ).catch((error) => console.warn("Firestore workSites sync failed", error));
+}
+
+function mergeById(localItems, remoteItems, idKey) {
+  const merged = new Map();
+  localItems.forEach((item) => merged.set(item[idKey], item));
+  remoteItems.forEach((item) => merged.set(item[idKey], { ...merged.get(item[idKey]), ...item }));
+  return [...merged.values()].filter((item) => item[idKey]);
+}
+
+async function saveMonthlyReportToFirestore(monthValue) {
+  if (!firestoreReady) return;
+  const rows = getMonthlyEmployeeReportRows(monthValue);
+  await firebaseDb.collection("monthlyReports").doc(monthValue).set({
+    month: monthValue,
+    generatedAt: new Date().toISOString(),
+    rows
+  });
+}
+
+async function initFirestoreSync() {
+  if (!isFirebaseConfigured() || !window.firebase?.initializeApp) {
+    renderSummary();
+    return;
+  }
+
+  try {
+    if (!window.firebase.apps.length) {
+      window.firebase.initializeApp(getFirebaseConfig());
+    }
+    firebaseDb = window.firebase.firestore();
+    firestoreReady = true;
+    firestoreSyncing = true;
+
+    const [remoteEmployees, remoteRecords] = await Promise.all([
+      readFirestoreCollection("employees"),
+      readFirestoreCollection("attendanceRecords")
+    ]);
+    const mergedEmployees = normalizeEmployees(mergeById(getEmployees(), remoteEmployees, "employeeId"));
+    const mergedRecords = recalculateRecordStatuses(mergeById(getRecords(), remoteRecords, "id"));
+
+    cachedEmployees = mergedEmployees;
+    cachedRecords = mergedRecords;
+    saveJson(EMPLOYEES_STORAGE_KEY, cachedEmployees);
+    saveJson(RECORDS_STORAGE_KEY, cachedRecords);
+    localStorage.setItem(FIRESTORE_SYNC_STORAGE_KEY, new Date().toISOString());
+    firestoreSyncing = false;
+
+    syncDirectoryToFirestore();
+    syncEmployeesToFirestore();
+    syncRecordsToFirestore();
+    renderClockEmployeeSelect();
+    renderAdmin();
+    showToast("Firebase 同步完成");
+  } catch (error) {
+    firestoreReady = false;
+    firestoreSyncing = false;
+    console.warn("Firebase Firestore sync failed", error);
+    showToast("Firebase 尚未連線，暫用本機資料");
+    renderSummary();
+  }
+}
+
 function getRecords() {
   return cachedRecords;
 }
@@ -95,6 +224,7 @@ function getEmployees() {
 function saveRecords(records) {
   cachedRecords = recalculateRecordStatuses(records);
   saveJson(RECORDS_STORAGE_KEY, cachedRecords);
+  syncRecordsToFirestore();
 }
 
 function normalizeEmployee(employee) {
@@ -105,7 +235,7 @@ function normalizeEmployee(employee) {
     title: String(employee.title || employee.position || "").trim(),
     phone: String(employee.phone || employee.mobile || "").trim(),
     clockPassword: String(employee.clockPassword || employee.password || "1234").trim(),
-    workSite: ["南崁", "平鎮", "支援外點"].includes(employee.workSite) ? employee.workSite : "南崁",
+    workSite: defaultWorkSites.includes(employee.workSite) ? employee.workSite : "南崁",
     startDate: employee.startDate || formatDateValue(new Date()),
     status: employee.status === "離職" ? "離職" : "在職",
     note: String(employee.note || "").trim(),
@@ -130,6 +260,8 @@ function saveEmployees(employees) {
   const normalizedEmployees = normalizeEmployees(employees);
   cachedEmployees = normalizedEmployees;
   saveJson(EMPLOYEES_STORAGE_KEY, normalizedEmployees);
+  syncEmployeesToFirestore();
+  syncDirectoryToFirestore();
   renderClockEmployeeSelect();
 }
 
@@ -472,7 +604,7 @@ function renderSummary() {
   const clockInCount = clockedInEmployeeIds.size;
   const notClockedInCount = Math.max(activeEmployees.length - clockInCount, 0);
 
-  dataMode.textContent = "本機資料庫";
+  dataMode.textContent = getFirestoreStatusText();
   todayStats.innerHTML = `
     <div class="status-card">
       <span>今日出勤統計</span>
@@ -718,6 +850,7 @@ function exportMonthlyReport() {
   link.download = `楊家將_${monthValue}_出勤月報表.csv`;
   link.click();
   URL.revokeObjectURL(url);
+  saveMonthlyReportToFirestore(monthValue).catch((error) => console.warn("Firestore monthly report sync failed", error));
 }
 
 function splitImportLine(line) {
@@ -1146,6 +1279,7 @@ function init() {
   window.setInterval(renderClock, 1000);
   renderAdmin();
   showInstallPrompt();
+  initFirestoreSync();
 }
 
 init();
