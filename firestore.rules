@@ -1,0 +1,33 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // The current app uses a client-side admin login and no Firebase Auth yet.
+    // These launch rules keep the Firestore upgrade functional. Before storing
+    // sensitive payroll or personal data, add Firebase Auth and restrict writes
+    // by custom admin claims.
+    match /employees/{employeeId} {
+      allow read, write: if true;
+    }
+
+    match /attendanceRecords/{recordId} {
+      allow read, write: if true;
+    }
+
+    match /departments/{departmentId} {
+      allow read, write: if true;
+    }
+
+    match /workSites/{workSiteId} {
+      allow read, write: if true;
+    }
+
+    match /monthlyReports/{monthId} {
+      allow read, write: if true;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
