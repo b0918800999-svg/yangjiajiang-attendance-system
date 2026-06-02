@@ -3,7 +3,7 @@ const EMPLOYEES_STORAGE_KEY = "employees";
 const LEGACY_EMPLOYEES_STORAGE_KEY = "employee-directory-v1";
 const FIRESTORE_SYNC_STORAGE_KEY = "yang-firestore-sync-v1";
 const defaultDepartments = ["行政部", "倉儲部", "包裝部", "業務部", "主管", "其他"];
-const defaultWorkSites = ["南崁", "平鎮", "支援外點"];
+const defaultWorkSites = ["南崁", "平鎮", "支援外點", "郵船泛泰"];
 const actionLabels = {
   clock_in: "上班",
   clock_out: "下班"
@@ -11,9 +11,10 @@ const actionLabels = {
 const allowedStatuses = ["正常", "遲到", "早退", "缺卡", "補打卡", "異常"];
 const workSiteRules = {
   南崁: { start: "08:00", end: "17:00" },
-  平鎮: { start: "09:00", end: "18:00" }
+  平鎮: { start: "09:00", end: "18:00" },
+  郵船泛泰: { start: "08:30", end: "17:30" }
 };
-const reportWorkSites = ["南崁", "平鎮"];
+const reportWorkSites = ["南崁", "平鎮", "郵船泛泰"];
 
 const clockForm = document.querySelector("#clockForm");
 const formMessage = document.querySelector("#formMessage");
