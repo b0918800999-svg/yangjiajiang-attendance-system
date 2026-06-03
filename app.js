@@ -75,6 +75,10 @@ let deferredInstallPrompt = null;
 let firebaseDb = null;
 let firestoreReady = false;
 let firestoreSyncing = false;
+let cachedDepartments = defaultDepartments.map((name, index) => ({ id: name, name, order: index + 1, active: true }));
+let unsubscribeEmployees = null;
+let unsubscribeRecords = null;
+let unsubscribeDepartments = null;
 
 function loadJson(key) {
   try {
@@ -130,28 +134,101 @@ async function replaceFirestoreCollection(name, items, idKey) {
   await batch.commit();
 }
 
+function sortEmployees(employees) {
+  return [...employees].sort((a, b) => a.employeeId.localeCompare(b.employeeId));
+}
+
+function sortRecords(records) {
+  return [...records].sort((a, b) => `${b.workDate}${b.workTime}`.localeCompare(`${a.workDate}${a.workTime}`));
+}
+
+function normalizeDepartments(departments) {
+  const seen = new Set();
+  const normalized = departments
+    .map((department, index) => ({
+      id: String(department.id || department.name || "").trim(),
+      name: String(department.name || department.id || "").trim(),
+      order: Number(department.order || index + 1),
+      active: department.active !== false
+    }))
+    .filter((department) => department.id && department.name)
+    .filter((department) => {
+      if (seen.has(department.id)) return false;
+      seen.add(department.id);
+      return true;
+    })
+    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+  return normalized.length ? normalized : defaultDepartments.map((name, index) => ({ id: name, name, order: index + 1, active: true }));
+}
+
+function refreshAfterRemoteSync() {
+  renderDepartmentOptions();
+  renderClockEmployeeSelect();
+  renderAdmin();
+  renderSummary();
+}
+
+function handleFirestoreEmployeesSnapshot(snapshot) {
+  const remoteEmployees = normalizeEmployees(snapshot.docs.map((doc) => ({ employeeId: doc.id, ...doc.data() })));
+  if (!remoteEmployees.length) return;
+  cachedEmployees = sortEmployees(remoteEmployees);
+  saveJson(EMPLOYEES_STORAGE_KEY, cachedEmployees);
+  refreshAfterRemoteSync();
+}
+
+function handleFirestoreRecordsSnapshot(snapshot) {
+  const remoteRecords = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  cachedRecords = recalculateRecordStatuses(sortRecords(remoteRecords));
+  saveJson(RECORDS_STORAGE_KEY, cachedRecords);
+  refreshAfterRemoteSync();
+}
+
+function handleFirestoreDepartmentsSnapshot(snapshot) {
+  const remoteDepartments = normalizeDepartments(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+  cachedDepartments = remoteDepartments;
+  refreshAfterRemoteSync();
+}
+
+function startFirestoreRealtimeSync() {
+  unsubscribeEmployees?.();
+  unsubscribeRecords?.();
+  unsubscribeDepartments?.();
+
+  unsubscribeEmployees = firebaseDb.collection("employees").onSnapshot(handleFirestoreEmployeesSnapshot, (error) =>
+    console.warn("Firestore employees listener failed", error)
+  );
+  unsubscribeRecords = firebaseDb.collection("attendanceRecords").onSnapshot(handleFirestoreRecordsSnapshot, (error) =>
+    console.warn("Firestore records listener failed", error)
+  );
+  unsubscribeDepartments = firebaseDb.collection("departments").onSnapshot(handleFirestoreDepartmentsSnapshot, (error) =>
+    console.warn("Firestore departments listener failed", error)
+  );
+}
+
 function syncEmployeesToFirestore() {
-  if (!firestoreReady) return;
-  replaceFirestoreCollection("employees", getEmployees(), "employeeId").catch((error) => console.warn("Firestore employees sync failed", error));
+  if (!firestoreReady) return Promise.resolve();
+  return replaceFirestoreCollection("employees", getEmployees(), "employeeId").catch((error) => console.warn("Firestore employees sync failed", error));
 }
 
 function syncRecordsToFirestore() {
-  if (!firestoreReady) return;
-  replaceFirestoreCollection("attendanceRecords", getRecords(), "id").catch((error) => console.warn("Firestore records sync failed", error));
+  if (!firestoreReady) return Promise.resolve();
+  return replaceFirestoreCollection("attendanceRecords", getRecords(), "id").catch((error) => console.warn("Firestore records sync failed", error));
 }
 
 function syncDirectoryToFirestore() {
-  if (!firestoreReady) return;
-  replaceFirestoreCollection(
-    "departments",
-    defaultDepartments.map((name, index) => ({ id: name, name, order: index + 1, active: true })),
-    "id"
-  ).catch((error) => console.warn("Firestore departments sync failed", error));
-  replaceFirestoreCollection(
-    "workSites",
-    defaultWorkSites.map((name, index) => ({ id: name, name, order: index + 1, active: true })),
-    "id"
-  ).catch((error) => console.warn("Firestore workSites sync failed", error));
+  if (!firestoreReady) return Promise.resolve();
+  return Promise.all([
+    replaceFirestoreCollection(
+      "departments",
+      cachedDepartments,
+      "id"
+    ).catch((error) => console.warn("Firestore departments sync failed", error)),
+    replaceFirestoreCollection(
+      "workSites",
+      defaultWorkSites.map((name, index) => ({ id: name, name, order: index + 1, active: true })),
+      "id"
+    ).catch((error) => console.warn("Firestore workSites sync failed", error))
+  ]);
 }
 
 function mergeById(localItems, remoteItems, idKey) {
@@ -185,25 +262,26 @@ async function initFirestoreSync() {
     firestoreReady = true;
     firestoreSyncing = true;
 
-    const [remoteEmployees, remoteRecords] = await Promise.all([
+    const [remoteEmployees, remoteRecords, remoteDepartments] = await Promise.all([
       readFirestoreCollection("employees"),
-      readFirestoreCollection("attendanceRecords")
+      readFirestoreCollection("attendanceRecords"),
+      readFirestoreCollection("departments")
     ]);
     const mergedEmployees = normalizeEmployees(mergeById(getEmployees(), remoteEmployees, "employeeId"));
     const mergedRecords = recalculateRecordStatuses(mergeById(getRecords(), remoteRecords, "id"));
+    const mergedDepartments = normalizeDepartments(mergeById(cachedDepartments, remoteDepartments, "id"));
 
     cachedEmployees = mergedEmployees;
     cachedRecords = mergedRecords;
+    cachedDepartments = mergedDepartments;
     saveJson(EMPLOYEES_STORAGE_KEY, cachedEmployees);
     saveJson(RECORDS_STORAGE_KEY, cachedRecords);
     localStorage.setItem(FIRESTORE_SYNC_STORAGE_KEY, new Date().toISOString());
     firestoreSyncing = false;
 
-    syncDirectoryToFirestore();
-    syncEmployeesToFirestore();
-    syncRecordsToFirestore();
-    renderClockEmployeeSelect();
-    renderAdmin();
+    await Promise.all([syncDirectoryToFirestore(), syncEmployeesToFirestore(), syncRecordsToFirestore()]);
+    startFirestoreRealtimeSync();
+    refreshAfterRemoteSync();
     showToast("Firebase 同步完成");
   } catch (error) {
     firestoreReady = false;
@@ -220,6 +298,33 @@ function getRecords() {
 
 function getEmployees() {
   return cachedEmployees;
+}
+
+function getDepartments() {
+  return cachedDepartments.filter((department) => department.active !== false);
+}
+
+function renderDepartmentOptions() {
+  const departments = getDepartments();
+  const departmentOptions = departments.map((department) => `<option value="${escapeHtml(department.name)}">${escapeHtml(department.name)}</option>`).join("");
+  const employeeValue = employeeManageDepartment?.value || "行政部";
+  const clockValue = departmentSelect?.value || "行政部";
+  const filterValue = departmentFilter?.value || "";
+
+  if (employeeManageDepartment) {
+    employeeManageDepartment.innerHTML = departmentOptions;
+    employeeManageDepartment.value = departments.some((department) => department.name === employeeValue) ? employeeValue : departments[0]?.name || "行政部";
+  }
+
+  if (departmentSelect) {
+    departmentSelect.innerHTML = departmentOptions;
+    departmentSelect.value = departments.some((department) => department.name === clockValue) ? clockValue : departments[0]?.name || "行政部";
+  }
+
+  if (departmentFilter) {
+    departmentFilter.innerHTML = `<option value="">全部部門</option>${departmentOptions}`;
+    departmentFilter.value = departments.some((department) => department.name === filterValue) ? filterValue : "";
+  }
 }
 
 function saveRecords(records) {
@@ -1276,6 +1381,7 @@ function init() {
   cachedRecords = recalculateRecordStatuses(loadJson(RECORDS_STORAGE_KEY));
   saveJson(RECORDS_STORAGE_KEY, cachedRecords);
   ensureDefaultEmployee();
+  renderDepartmentOptions();
   renderClock();
   window.setInterval(renderClock, 1000);
   renderAdmin();
