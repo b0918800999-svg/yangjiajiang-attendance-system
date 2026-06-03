@@ -317,6 +317,22 @@
             </div>
           </div>
 
+          <div class="admin-toolbar">
+            <div class="import-panel">
+              <div>
+                <p class="eyebrow">Local Backup</p>
+                <h2>匯入舊資料到 Firebase</h2>
+                <p>請在行政小姐原本輸入員工資料的那台裝置上執行。系統會讀取該瀏覽器的本機員工資料並寫入 Firebase。</p>
+              </div>
+              <div class="toolbar-actions">
+                <button class="ghost-button" id="checkLocalEmployeesButton" type="button">檢查本機員工資料</button>
+                <button class="solid-button" id="importLocalEmployeesButton" type="button">匯入本機員工資料到 Firebase</button>
+                <button class="ghost-button danger" id="deleteTestEmployeesButton" type="button">刪除測試員工資料</button>
+              </div>
+              <p class="form-message" id="localImportMessage" role="status"></p>
+            </div>
+          </div>
+
           <div class="table-wrap">
             <table>
               <thead>

@@ -45,6 +45,10 @@ const cancelEmployeeButton = document.querySelector("#cancelEmployeeButton");
 const employeeImportFile = document.querySelector("#employeeImportFile");
 const importEmployeesButton = document.querySelector("#importEmployeesButton");
 const importMessage = document.querySelector("#importMessage");
+const checkLocalEmployeesButton = document.querySelector("#checkLocalEmployeesButton");
+const importLocalEmployeesButton = document.querySelector("#importLocalEmployeesButton");
+const deleteTestEmployeesButton = document.querySelector("#deleteTestEmployeesButton");
+const localImportMessage = document.querySelector("#localImportMessage");
 const employeeIdInput = document.querySelector("#employeeIdInput");
 const clockPasswordInput = document.querySelector("#clockPasswordInput");
 const employeeNameInput = document.querySelector("#employeeNameInput");
@@ -134,6 +138,25 @@ async function replaceFirestoreCollection(name, items, idKey) {
   await batch.commit();
 }
 
+async function upsertFirestoreCollection(name, items, idKey) {
+  const collection = firestoreCollection(name);
+  if (!collection) return;
+  const batch = firebaseDb.batch();
+  items.forEach((item, index) => {
+    const id = String(item[idKey] || item.id || item.name || index);
+    batch.set(collection.doc(id), { ...item, syncedAt: new Date().toISOString() }, { merge: true });
+  });
+  await batch.commit();
+}
+
+async function deleteFirestoreDocuments(name, ids) {
+  const collection = firestoreCollection(name);
+  if (!collection || !ids.length) return;
+  const batch = firebaseDb.batch();
+  ids.forEach((id) => batch.delete(collection.doc(String(id))));
+  await batch.commit();
+}
+
 function sortEmployees(employees) {
   return [...employees].sort((a, b) => a.employeeId.localeCompare(b.employeeId));
 }
@@ -207,7 +230,7 @@ function startFirestoreRealtimeSync() {
 
 function syncEmployeesToFirestore() {
   if (!firestoreReady) return Promise.resolve();
-  return replaceFirestoreCollection("employees", getEmployees(), "employeeId").catch((error) => console.warn("Firestore employees sync failed", error));
+  return upsertFirestoreCollection("employees", getEmployees(), "employeeId").catch((error) => console.warn("Firestore employees sync failed", error));
 }
 
 function syncRecordsToFirestore() {
@@ -1007,6 +1030,65 @@ function parseEmployeeImport(text) {
   );
 }
 
+function loadLocalStorageEmployees() {
+  return normalizeEmployees(loadJson(EMPLOYEES_STORAGE_KEY));
+}
+
+function getTestEmployeeIds(employees = getEmployees()) {
+  const testPairs = new Set(["E001:王小明", "E002:周菱薇", "N001:鄭志宏", "P001:楊立名", "POO1:楊立名"]);
+  return employees
+    .filter((employee) => testPairs.has(`${employee.employeeId}:${employee.name}`))
+    .map((employee) => employee.employeeId);
+}
+
+function showLocalEmployeesStatus() {
+  const localEmployees = loadLocalStorageEmployees();
+  const testIds = getTestEmployeeIds(localEmployees);
+  const names = localEmployees.map((employee) => `${employee.employeeId} ${employee.name}`).join("、");
+  localImportMessage.textContent = localEmployees.length
+    ? `本機找到 ${localEmployees.length} 筆員工資料：${names}${testIds.length ? `。其中 ${testIds.length} 筆看起來是測試資料。` : ""}`
+    : "目前這個瀏覽器沒有找到本機 employees 員工資料。請在行政小姐原本輸入員工的那台裝置執行。";
+  return localEmployees;
+}
+
+async function importLocalEmployeesToFirestore() {
+  if (!requireAdmin()) return;
+  const localEmployees = showLocalEmployeesStatus();
+  if (!localEmployees.length) return;
+  if (!firestoreReady) {
+    localImportMessage.textContent = "Firebase 尚未連線，請重新整理後確認資料模式顯示 Firebase Firestore。";
+    showToast("Firebase 尚未連線");
+    return;
+  }
+
+  const message = `本機找到 ${localEmployees.length} 筆員工資料。確定匯入 Firebase？\n\n匯入會新增或更新同員工編號資料，不會刪除其他雲端員工。`;
+  if (!confirm(message)) return;
+
+  const merged = [...getEmployees()];
+  localEmployees.forEach((employee) => {
+    const index = merged.findIndex((item) => item.employeeId === employee.employeeId);
+    const nextEmployee = {
+      ...employee,
+      migratedFrom: "localStorage",
+      migratedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    if (index >= 0) {
+      merged[index] = { ...merged[index], ...nextEmployee };
+    } else {
+      merged.push({ ...nextEmployee, createdAt: employee.createdAt || new Date().toISOString() });
+    }
+  });
+
+  cachedEmployees = normalizeEmployees(merged);
+  saveJson(EMPLOYEES_STORAGE_KEY, cachedEmployees);
+  await upsertFirestoreCollection("employees", localEmployees, "employeeId");
+  syncDirectoryToFirestore();
+  refreshAfterRemoteSync();
+  localImportMessage.textContent = `已匯入 ${localEmployees.length} 筆本機員工資料到 Firebase。手機與電腦重新整理後會同步顯示。`;
+  showToast("本機員工已匯入 Firebase");
+}
+
 function importEmployeesFromFile() {
   const file = employeeImportFile.files && employeeImportFile.files[0];
   if (!file) {
@@ -1038,6 +1120,23 @@ function importEmployeesFromFile() {
     showToast("員工匯入完成");
   });
   reader.readAsText(file, "utf-8");
+}
+
+async function deleteTestEmployees() {
+  if (!requireAdmin()) return;
+  const testIds = getTestEmployeeIds();
+  if (!testIds.length) {
+    localImportMessage.textContent = "目前員工列表沒有找到已知測試員工資料。";
+    showToast("沒有測試員工");
+    return;
+  }
+  if (!confirm(`將刪除測試員工：${testIds.join("、")}。\n既有打卡紀錄不會刪除。確定刪除？`)) return;
+  cachedEmployees = getEmployees().filter((employee) => !testIds.includes(employee.employeeId));
+  saveJson(EMPLOYEES_STORAGE_KEY, cachedEmployees);
+  await deleteFirestoreDocuments("employees", testIds);
+  refreshAfterRemoteSync();
+  localImportMessage.textContent = `已刪除 ${testIds.length} 筆測試員工資料：${testIds.join("、")}。`;
+  showToast("測試員工已刪除");
 }
 
 function autofillEmployee(employeeId) {
@@ -1352,6 +1451,11 @@ document.querySelector("#exportMonthlyButton").addEventListener("click", () => {
 importEmployeesButton.addEventListener("click", () => {
   if (requireAdmin()) importEmployeesFromFile();
 });
+checkLocalEmployeesButton.addEventListener("click", () => {
+  if (requireAdmin()) showLocalEmployeesStatus();
+});
+importLocalEmployeesButton.addEventListener("click", importLocalEmployeesToFirestore);
+deleteTestEmployeesButton.addEventListener("click", deleteTestEmployees);
 document.querySelector("#clearFilterButton").addEventListener("click", () => {
   if (!requireAdmin()) return;
   dateFilter.value = "";
