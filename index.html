@@ -70,7 +70,7 @@
                 <input id="clockPasswordInput" name="clockPassword" type="password" autocomplete="current-password" placeholder="請輸入打卡密碼" required />
               </label>
             </div>
-            <div class="form-row">
+            <div class="form-row field-hidden">
               <label for="employeeNameInput">
                 姓名
                 <input id="employeeNameInput" name="employeeName" type="text" placeholder="選擇員工後自動帶入" readonly />
@@ -87,7 +87,7 @@
                 </select>
               </label>
             </div>
-            <label for="workSiteSelect">
+            <label class="field-hidden" for="workSiteSelect">
               工作據點
               <select id="workSiteSelect" name="workSite" required>
                 <option value="南崁">南崁</option>
@@ -96,7 +96,7 @@
                 <option value="郵船泛泰">郵船泛泰</option>
               </select>
             </label>
-            <label for="noteInput">
+            <label class="field-hidden" for="noteInput">
               備註
               <textarea id="noteInput" name="note" rows="3" placeholder="例如：外出拜訪、遠端上班、補打卡原因"></textarea>
             </label>
@@ -109,10 +109,6 @@
         </div>
 
         <aside class="summary-panel" aria-label="今日摘要">
-          <div class="status-card primary">
-            <span>資料模式</span>
-            <strong id="dataMode">檢查中</strong>
-          </div>
           <div class="status-grid" id="todayStats">
             <div class="status-card">
               <span>今日上班</span>
@@ -122,10 +118,6 @@
               <span>今日下班</span>
               <strong>0</strong>
             </div>
-          </div>
-          <div class="recent-box">
-            <h2>最近打卡</h2>
-            <ul id="recentList"></ul>
           </div>
         </aside>
       </section>

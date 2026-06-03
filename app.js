@@ -731,7 +731,9 @@ function renderSummary() {
   const clockInCount = clockedInEmployeeIds.size;
   const notClockedInCount = Math.max(activeEmployees.length - clockInCount, 0);
 
-  dataMode.textContent = getFirestoreStatusText();
+  if (dataMode) {
+    dataMode.textContent = getFirestoreStatusText();
+  }
   todayStats.innerHTML = `
     <div class="status-card">
       <span>今日出勤統計</span>
@@ -752,20 +754,24 @@ function renderSummary() {
     .slice(0, 5);
 
   if (!recentRecords.length) {
-    recentList.innerHTML = `<li class="empty-note">尚無打卡紀錄。</li>`;
+    if (recentList) {
+      recentList.innerHTML = `<li class="empty-note">尚無打卡紀錄。</li>`;
+    }
     return;
   }
 
-  recentList.innerHTML = recentRecords
-    .map(
-      (record) => `
-        <li>
-          <span>${escapeHtml(record.employeeName)} ${actionLabels[record.action]}</span>
-          <strong>${record.workDate} ${record.workTime.slice(0, 5)}</strong>
-        </li>
-      `
-    )
-    .join("");
+  if (recentList) {
+    recentList.innerHTML = recentRecords
+      .map(
+        (record) => `
+          <li>
+            <span>${escapeHtml(record.employeeName)} ${actionLabels[record.action]}</span>
+            <strong>${record.workDate} ${record.workTime.slice(0, 5)}</strong>
+          </li>
+        `
+      )
+      .join("");
+  }
 }
 
 function getFilteredRecords() {
