@@ -47,6 +47,7 @@ const importEmployeesButton = document.querySelector("#importEmployeesButton");
 const importMessage = document.querySelector("#importMessage");
 const checkLocalEmployeesButton = document.querySelector("#checkLocalEmployeesButton");
 const importLocalEmployeesButton = document.querySelector("#importLocalEmployeesButton");
+const clearLocalCacheButton = document.querySelector("#clearLocalCacheButton");
 const deleteTestEmployeesButton = document.querySelector("#deleteTestEmployeesButton");
 const localImportMessage = document.querySelector("#localImportMessage");
 const employeeIdInput = document.querySelector("#employeeIdInput");
@@ -193,7 +194,6 @@ function refreshAfterRemoteSync() {
 
 function handleFirestoreEmployeesSnapshot(snapshot) {
   const remoteEmployees = normalizeEmployees(snapshot.docs.map((doc) => ({ employeeId: doc.id, ...doc.data() })));
-  if (!remoteEmployees.length) return;
   cachedEmployees = sortEmployees(remoteEmployees);
   saveJson(EMPLOYEES_STORAGE_KEY, cachedEmployees);
   refreshAfterRemoteSync();
@@ -290,8 +290,8 @@ async function initFirestoreSync() {
       readFirestoreCollection("attendanceRecords"),
       readFirestoreCollection("departments")
     ]);
-    const mergedEmployees = normalizeEmployees(mergeById(getEmployees(), remoteEmployees, "employeeId"));
-    const mergedRecords = recalculateRecordStatuses(mergeById(getRecords(), remoteRecords, "id"));
+    const mergedEmployees = normalizeEmployees(remoteEmployees);
+    const mergedRecords = recalculateRecordStatuses(remoteRecords);
     const mergedDepartments = normalizeDepartments(mergeById(cachedDepartments, remoteDepartments, "id"));
 
     cachedEmployees = mergedEmployees;
@@ -302,7 +302,7 @@ async function initFirestoreSync() {
     localStorage.setItem(FIRESTORE_SYNC_STORAGE_KEY, new Date().toISOString());
     firestoreSyncing = false;
 
-    await Promise.all([syncDirectoryToFirestore(), syncEmployeesToFirestore(), syncRecordsToFirestore()]);
+    await syncDirectoryToFirestore();
     startFirestoreRealtimeSync();
     refreshAfterRemoteSync();
     showToast("Firebase 同步完成");
@@ -389,9 +389,10 @@ function saveEmployees(employees) {
   const normalizedEmployees = normalizeEmployees(employees);
   cachedEmployees = normalizedEmployees;
   saveJson(EMPLOYEES_STORAGE_KEY, normalizedEmployees);
-  syncEmployeesToFirestore();
+  const syncTask = syncEmployeesToFirestore();
   syncDirectoryToFirestore();
   renderClockEmployeeSelect();
+  return syncTask;
 }
 
 function loadEmployees() {
@@ -511,7 +512,7 @@ function buildDailyAttendanceRows(records = getRecords(), employees = getEmploye
 }
 
 function recalculateRecordStatuses(records) {
-  const employees = cachedEmployees.length ? cachedEmployees : loadEmployees();
+  const employees = cachedEmployees;
   const dailyRows = buildDailyAttendanceRows(records, employees);
   const rowMap = new Map(dailyRows.map((row) => [`${row.date}-${row.employeeId}`, row]));
 
@@ -693,9 +694,6 @@ function normalizeEmployeeId(value) {
 
 function findEmployee(employeeId) {
   const normalizedId = normalizeEmployeeId(employeeId);
-  if (!cachedEmployees.length) {
-    cachedEmployees = normalizeEmployees(loadJson(EMPLOYEES_STORAGE_KEY));
-  }
   return cachedEmployees.find((employee) => employee.employeeId === normalizedId);
 }
 
@@ -1090,6 +1088,11 @@ async function importLocalEmployeesToFirestore() {
 }
 
 function importEmployeesFromFile() {
+  if (isFirebaseConfigured() && !firestoreReady) {
+    importMessage.textContent = "Firebase 尚未連線，請重新整理後確認資料模式顯示 Firebase Firestore。";
+    showToast("Firebase 尚未連線");
+    return;
+  }
   const file = employeeImportFile.files && employeeImportFile.files[0];
   if (!file) {
     importMessage.textContent = "請先選擇匯入檔案。";
@@ -1097,7 +1100,7 @@ function importEmployeesFromFile() {
   }
 
   const reader = new FileReader();
-  reader.addEventListener("load", () => {
+  reader.addEventListener("load", async () => {
     const importedEmployees = parseEmployeeImport(String(reader.result || ""));
     const validEmployees = importedEmployees.filter((employee) => employee.employeeId && employee.name);
     if (!validEmployees.length) {
@@ -1114,7 +1117,7 @@ function importEmployeesFromFile() {
         merged.push({ ...employee, createdAt: new Date().toISOString() });
       }
     });
-    saveEmployees(merged);
+    await saveEmployees(merged);
     renderAdmin();
     importMessage.textContent = `已匯入 ${validEmployees.length} 筆員工資料。`;
     showToast("員工匯入完成");
@@ -1124,6 +1127,11 @@ function importEmployeesFromFile() {
 
 async function deleteTestEmployees() {
   if (!requireAdmin()) return;
+  if (isFirebaseConfigured() && !firestoreReady) {
+    localImportMessage.textContent = "Firebase 尚未連線，請重新整理後確認資料模式顯示 Firebase Firestore。";
+    showToast("Firebase 尚未連線");
+    return;
+  }
   const testIds = getTestEmployeeIds();
   if (!testIds.length) {
     localImportMessage.textContent = "目前員工列表沒有找到已知測試員工資料。";
@@ -1137,6 +1145,22 @@ async function deleteTestEmployees() {
   refreshAfterRemoteSync();
   localImportMessage.textContent = `已刪除 ${testIds.length} 筆測試員工資料：${testIds.join("、")}。`;
   showToast("測試員工已刪除");
+}
+
+function clearLocalCache() {
+  if (!requireAdmin()) return;
+  if (!confirm("確定清除這台裝置的本機暫存員工與打卡資料？Firebase 雲端資料不會刪除。")) return;
+  localStorage.removeItem(EMPLOYEES_STORAGE_KEY);
+  localStorage.removeItem(LEGACY_EMPLOYEES_STORAGE_KEY);
+  localStorage.removeItem(RECORDS_STORAGE_KEY);
+  localStorage.removeItem(FIRESTORE_SYNC_STORAGE_KEY);
+  cachedEmployees = [];
+  cachedRecords = [];
+  renderClockEmployeeSelect();
+  renderAdmin();
+  renderSummary();
+  localImportMessage.textContent = "本機暫存資料已清除。請重新整理，系統會只從 Firebase Firestore 讀取員工。";
+  showToast("本機暫存已清除");
 }
 
 function autofillEmployee(employeeId) {
@@ -1160,9 +1184,14 @@ function resetEmployeeForm() {
   employeeMessage.textContent = "";
 }
 
-function submitEmployee(event) {
+async function submitEmployee(event) {
   event.preventDefault();
   if (!requireAdmin()) return;
+  if (isFirebaseConfigured() && !firestoreReady) {
+    employeeMessage.textContent = "Firebase 尚未連線，請重新整理後確認資料模式顯示 Firebase Firestore。";
+    showToast("Firebase 尚未連線");
+    return;
+  }
   const data = new FormData(employeeForm);
   const editingId = editingEmployeeId.value;
   const employeeId = editingId || normalizeEmployeeId(data.get("employeeId"));
@@ -1192,7 +1221,7 @@ function submitEmployee(event) {
   }
 
   if (editingId) {
-    saveEmployees(getEmployees().map((item) => (item.employeeId === editingId ? { ...item, ...employee } : item)));
+    await saveEmployees(getEmployees().map((item) => (item.employeeId === editingId ? { ...item, ...employee } : item)));
     saveRecords(
       getRecords().map((record) =>
         record.employeeId === editingId
@@ -1208,7 +1237,7 @@ function submitEmployee(event) {
     employeeMessage.textContent = "員工資料已更新。";
     showToast("員工已更新");
   } else {
-    saveEmployees([{ ...employee, createdAt: new Date().toISOString() }, ...getEmployees()]);
+    await saveEmployees([{ ...employee, createdAt: new Date().toISOString() }, ...getEmployees()]);
     employeeMessage.textContent = "員工資料已新增。";
     showToast("員工已新增");
   }
@@ -1239,7 +1268,7 @@ function editEmployee(employeeId) {
   employeeMessage.textContent = `正在修改 ${employee.name}`;
 }
 
-function deleteEmployee(employeeId) {
+async function deleteEmployee(employeeId) {
   if (!requireAdmin()) return;
   const employee = findEmployee(employeeId);
   if (!employee) {
@@ -1251,7 +1280,9 @@ function deleteEmployee(employeeId) {
     ? "此員工已有打卡紀錄。刪除員工資料不會刪除既有打卡紀錄，確定刪除？"
     : "確定刪除此員工資料？";
   if (!confirm(message)) return;
-  saveEmployees(getEmployees().filter((item) => item.employeeId !== employeeId));
+  cachedEmployees = getEmployees().filter((item) => item.employeeId !== employeeId);
+  saveJson(EMPLOYEES_STORAGE_KEY, cachedEmployees);
+  await deleteFirestoreDocuments("employees", [employeeId]);
   renderAdmin();
   showToast("員工已刪除");
 }
@@ -1315,56 +1346,6 @@ function updateRecordStatus(id, status) {
   saveRecords(getRecords().map((record) => (record.id === id ? { ...record, status, statusOverride: status } : record)));
   renderAdmin();
   showToast("狀態已更新");
-}
-
-function ensureDefaultEmployee() {
-  const now = new Date().toISOString();
-  const defaultEmployee = {
-    employeeId: "E001",
-    name: "王小明",
-    department: "行政部",
-    title: "",
-    phone: "",
-    clockPassword: "1234",
-    workSite: "南崁",
-    startDate: formatDateValue(new Date()),
-    status: "在職",
-    note: "",
-    createdAt: now,
-    updatedAt: now
-  };
-
-  const employees = getEmployees();
-  const existingEmployee = findEmployee("E001");
-  if (existingEmployee) {
-    saveEmployees(
-      employees.map((employee) =>
-        employee.employeeId === "E001"
-          ? {
-              ...employee,
-              name: "王小明",
-              department: "行政部",
-              title: employee.title || "",
-              phone: employee.phone || "",
-              clockPassword: employee.clockPassword || "1234",
-              workSite: employee.workSite || "南崁",
-              status: "在職",
-              startDate: employee.startDate || defaultEmployee.startDate,
-              note: employee.note || "",
-              updatedAt: now
-            }
-          : employee
-      )
-    );
-    return;
-  }
-
-  saveEmployees([
-    {
-      ...defaultEmployee
-    },
-    ...employees
-  ]);
 }
 
 document.addEventListener("click", (event) => {
@@ -1455,6 +1436,7 @@ checkLocalEmployeesButton.addEventListener("click", () => {
   if (requireAdmin()) showLocalEmployeesStatus();
 });
 importLocalEmployeesButton.addEventListener("click", importLocalEmployeesToFirestore);
+clearLocalCacheButton.addEventListener("click", clearLocalCache);
 deleteTestEmployeesButton.addEventListener("click", deleteTestEmployees);
 document.querySelector("#clearFilterButton").addEventListener("click", () => {
   if (!requireAdmin()) return;
@@ -1481,10 +1463,11 @@ installAppButton.addEventListener("click", installApp);
 dismissInstallButton.addEventListener("click", closeInstallPrompt);
 
 function init() {
-  cachedEmployees = loadEmployees();
-  cachedRecords = recalculateRecordStatuses(loadJson(RECORDS_STORAGE_KEY));
-  saveJson(RECORDS_STORAGE_KEY, cachedRecords);
-  ensureDefaultEmployee();
+  cachedEmployees = isFirebaseConfigured() ? [] : loadEmployees();
+  cachedRecords = isFirebaseConfigured() ? [] : recalculateRecordStatuses(loadJson(RECORDS_STORAGE_KEY));
+  if (!isFirebaseConfigured()) {
+    saveJson(RECORDS_STORAGE_KEY, cachedRecords);
+  }
   renderDepartmentOptions();
   renderClock();
   window.setInterval(renderClock, 1000);
